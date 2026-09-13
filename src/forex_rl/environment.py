@@ -10,6 +10,8 @@ from __future__ import annotations
 import numpy as np
 import pandas as pd
 
+from .evaluation import ExecutionAssumptions
+
 try:  # Keep normal package imports dependency-light.
     import gymnasium as gym
     from gymnasium import spaces
@@ -42,7 +44,8 @@ class ForexEnv(_EnvBase):
         self.window_size, self.position_frac = int(window_size), float(position_frac)
         self.sl_atr_mult, self.tp_atr_mult = float(sl_atr_mult), float(tp_atr_mult)
         self.max_bars_in_trade = int(max_bars_in_trade)
-        self.transaction_cost, self.slippage = float(transaction_cost), float(slippage)
+        self.execution = ExecutionAssumptions(float(transaction_cost), float(slippage))
+        self.transaction_cost, self.slippage = self.execution.transaction_cost, self.execution.slippage
         self.invalid_action_penalty, self.dd_penalty = float(invalid_action_penalty), float(dd_penalty)
         self.turnover_penalty, self.rng = float(turnover_penalty), np.random.default_rng(seed)
         if gym is not None:
@@ -58,7 +61,7 @@ class ForexEnv(_EnvBase):
     def _reset_state(self):
         self.t, self.net_worth, self.peak_net_worth, self.position = self.window_size, 1.0, 1.0, 0
         self.entry_price = self.stop_price = self.take_price = None
-        self.units, self.bars_in_trade, self.open_trade_i = 0.0, 0, None
+        self.units, self.bars_in_trade, self.open_trade_i, self.entry_cost = 0.0, 0, None, 0.0
 
     def reset(self, seed=None, options=None):
         if gym is not None:
@@ -75,11 +78,13 @@ class ForexEnv(_EnvBase):
         risk_value = abs(self.entry_price - self.stop_price) * self.units
         if risk_value <= 1e-12:
             return 0.0
-        profit_value = (
+        gross_profit_value = (
             (exit_price - self.entry_price) if self.position == 1 else (self.entry_price - exit_price)
         ) * self.units
+        exit_cost = abs(exit_price * self.units) * self.transaction_cost
+        profit_value = gross_profit_value - self.entry_cost - exit_cost
         realized_r = float(profit_value / (risk_value + 1e-12))
-        self.net_worth += profit_value
+        self.net_worth += gross_profit_value - exit_cost
         self.peak_net_worth = max(self.peak_net_worth, self.net_worth)
         drawdown = max(0.0, 1.0 - self.net_worth / self.peak_net_worth) if self.peak_net_worth > 0 else 0.0
         penalty = (self.dd_penalty * drawdown if self.dd_penalty > 0 else 0.0) + self.turnover_penalty
@@ -94,13 +99,17 @@ class ForexEnv(_EnvBase):
                 "stop": self.stop_price,
                 "take": self.take_price,
                 "units": self.units,
+                "bars_in_trade": self.bars_in_trade,
                 "realized_R": realized_r,
                 "pnl_value": profit_value,
+                "entry_cost": self.entry_cost,
+                "exit_cost": exit_cost,
+                "transaction_cost": self.entry_cost + exit_cost,
                 "net_worth": self.net_worth,
             }
         )
         self.position, self.entry_price, self.stop_price, self.take_price = 0, None, None, None
-        self.units, self.bars_in_trade, self.open_trade_i = 0.0, 0, None
+        self.units, self.bars_in_trade, self.open_trade_i, self.entry_cost = 0.0, 0, None, 0.0
         return float(realized_r - penalty)
 
     def step(self, action):
@@ -114,6 +123,8 @@ class ForexEnv(_EnvBase):
                 self.stop_price = self.entry_price - stop_distance if action == 1 else self.entry_price + stop_distance
                 self.take_price = self.entry_price + take_distance if action == 1 else self.entry_price - take_distance
                 self.units = self.net_worth * self.position_frac / max(1e-6, abs(self.entry_price - self.stop_price))
+                self.entry_cost = abs(self.entry_price * self.units) * self.transaction_cost
+                self.net_worth -= self.entry_cost
                 self.entries.append(
                     {
                         "type": "long" if action == 1 else "short",

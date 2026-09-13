@@ -23,12 +23,19 @@ implementations, while retaining explicit opt-in training/walk-forward hooks.
 
 ## Behavioral preservation
 
-No quantitative methodology was changed. In particular, the moved logic keeps
+The structural refactor preserved quantitative methodology. Step 4 makes three
+documented evaluation corrections: an inert ``transaction_cost`` is now an
+explicit per-side executed-notional cost; baseline signals now use the same
+environment execution engine and observation warmup as policy rollout; and MTM
+resolves positional trade timestamps while recording entry-bar fees. Defaults
+remain zero-cost. These corrections do not change the environment's canonical
+same-bar action/SL/TP/time ordering, ATR/risk floor, or position sizing. The
+moved logic keeps
 the existing indicator formulas, sample-standard-deviation scaling, train-only
 scaler fitting, DateOffset fold boundaries, index-reset environment logging,
 action timing, position sizing, SL-before-TP-before-time ordering, slippage,
-and currently inert `transaction_cost` parameter. The existing caveats in the
-Step 1 map remain intentionally documented rather than silently corrected.
+and the existing caveats in the Step 1 map remain intentionally documented
+rather than silently corrected.
 
 ## Deliberately not validated
 

@@ -1,83 +1,71 @@
-# Forex RL — Refined R‑Reward
+# Forex RL Simulator
 
-> End‑to‑end reinforcement learning (RL) pipeline for EUR/USD with **R‑multiple rewards**, ATR‑based risk, and **walk‑forward cross‑validation**.  
-> Built around a custom `gymnasium` environment + Stable‑Baselines3 (DQN/QR‑DQN/RPPO), robust feature engineering, and rich reporting.
+> A reproducible research scaffold for testing whether an RL policy can add
+> value over simple FX trading baselines under the same risk, execution, and
+> chronological-evaluation assumptions. Research and education only—not
+> investment advice.
 
-<p align="center">
-  <em>Research only — not financial advice.</em>
-</p>
+## What this project asks
 
----
+The project studies EUR/USD directional trading with a discrete-action agent:
+flat, long, or short. Trades use ATR-derived stops and targets, R-multiple
+rewards, fixed fractional risk sizing, and a bounded holding period. The
+purpose is not to claim a live or profitable strategy; it is to make the
+research path inspectable and repeatable.
 
-## Highlights
+No performance result is included in this repository. Full data acquisition,
+model training, and historical walk-forward experiments are deliberate
+research runs that have not been executed as part of the lightweight checks.
 
-- **R‑multiple reward**: returns measured in risk units (R) defined by ATR‑based stop size.
-- **Custom `ForexEnv`** (Gymnasium):  
-  - Observation: window of normalized features, shape = `(window_size, n_features)`  
-  - Action space: `Discrete(3)` → **0: flat**, **1: long**, **2: short**  
-  - Exits: priority **SL → TP → time‑exit**, optional slippage/fees.
-- **Robust data pipeline** (via `yfinance`) with **EMA, RSI, MACD, Bollinger Bands, ATR**, returns, etc.
-- **Scaler** fit on **train only**, applied to val/test to prevent leakage.
-- **Walk‑forward CV** with configurable train/val/test windows and step size.
-- **Algorithms**: `DQN`, `QRDQN` (quantile regression DQN), `RPPO` (LSTM). Easy to switch.
-- **Metrics & reports**: trade list in R, daily MTM, Sharpe/Sortino/MaxDD,
-  and explicit local CSV/JSON/HTML report and ZIP helpers.
+## Architecture
 
----
+Reusable code lives in `src/forex_rl/`; the notebook is an experiment surface,
+not the source of business logic.
 
-## Repo Contents
+- `data.py`, `features.py` — data retrieval and indicator construction.
+- `preprocessing.py` — train-fitted z-score scaling.
+- `environment.py` — Gym-compatible execution, R rewards, position accounting,
+  and SL → TP → time-exit priority.
+- `research.py` — deterministic policy backtest, flat/random/trend baselines,
+  and opt-in walk-forward orchestration.
+- `evaluation.py` and `reporting.py` — shared equity curves, drawdowns, risk
+  metrics, turnover/trade counts, and CSV/JSON/HTML artifacts.
+- `walk_forward.py` — chronological fold boundaries.
 
-- `src/forex_rl/` — reusable package: config, data, features, preprocessing,
-  environment, evaluation, walk-forward boundaries, and optional model imports.
-- `Forex_RL_Agent_Final.ipynb` — a thin experiment interface that imports the
-  package. It prepares data and an environment but does not launch training.
-- `tests/test_baseline_characterization.py` — compact regression tests for the
-  established trading and data-processing semantics.
+The optional model layer supports DQN, QR-DQN, and recurrent PPO when the
+research dependencies are installed.
 
-Install the dependency-light core with `pip install -e .`; use
-`pip install -e .[research]` only when data download or SB3 training is needed.
-See `docs/STEP1_CURRENT_IMPLEMENTATION_MAP.md` for intentionally preserved
-methodological caveats.
+## Quant methodology and controls
 
----
+Features are formed from OHLCV history; the current feature row does not use a
+future bar. For every walk-forward fold, preprocessing is fitted on the train
+slice only and then applied to validation and test slices. Fold summaries retain
+train, validation, and test boundaries so in-sample and out-of-sample results
+can be reported separately, although they are not fully independent because
+adjacent slices share an endpoint. The repository deliberately preserves the established
+DateOffset window semantics and execution ordering. Those boundaries are later
+selected with inclusive pandas `.loc[start:end]`, so adjacent train/validation/
+test slices share endpoint rows; this legacy limitation is disclosed rather
+than silently changed.
 
-## Quickstart
+RL policies and the bundled flat, seeded-random, and EMA-crossover baselines
+receive the same ATR stop/target, position-risk fraction, maximum holding
+period, `transaction_cost`, and `slippage` configuration. `transaction_cost`
+is a proportional **per-side executed-notional** fee; `slippage` is the legacy
+absolute adverse adjustment at entry. Both default to zero. Costs are included
+in net PnL, realized R, and entry-bar MTM equity. All actions use the same
+canonical sequence: open at the current close, then evaluate that bar's SL,
+TP, and time exit in order. Make cost calibration an explicit experiment input.
 
-### Option A — Google Colab
-1. Clone/upload the complete repository, not just the notebook.
-2. In a notebook cell, install it with `!pip install -e ".[research]"`.
-3. In **Config (edit here)**, set symbol/dates and hyper‑parameters. Defaults are:
-   ```python
-   SYMBOL = "EURUSD=X"
-   START_DATE = "2015-01-01"
-   END_DATE   = "2025-08-01"
-   ```
-4. Run the notebook cells in order through **Data & Features** → **Scaler & Walk‑Forward** → **Env** → **Training**.
-5. Set `RUN_FULL_WALKFORWARD = True` only when you intentionally want training.
-6. The opt-in runner writes local walk-forward CSV/JSON/HTML outputs; call the
-   explicit ZIP helper if an archive is needed.
+Reports calculate annualized daily-MTM Sharpe and Sortino (252 periods/year,
+zero risk-free rate unless supplied), maximum fractional drawdown from running
+equity peaks, entry-plus-exit notional turnover, and closed-trade count. These
+figures are descriptive evaluation outputs, not model-selection guarantees.
 
-### Option B — Local (Linux/Mac/Windows)
-```bash
-# 1) Create env (recommended)
-python -m venv .venv && source .venv/bin/activate   # (Windows) .venv\Scripts\activate
+## Installation and lightweight verification
 
-# 2) Install this repository and its optional research dependencies
-pip install -e ".[research]"
-
-# 3) Launch Jupyter and open the notebook
-pip install jupyterlab
-jupyter lab
-```
-The notebook exposes the same workflow as explicit stages: data/features,
-leakage-safe vector-environment setup, optional model construction, and an
-opt-in full walk-forward runner. It deliberately does not train merely by being
-opened or imported.
-
-### Clean install and lightweight verification
-
-For development and CI-safe verification, install only the small development
-extra. It does not install Gymnasium/SB3, download market data, or run training.
+The core package needs only NumPy and pandas. The dev extra includes the test
+and lint tools; the research extra adds Gymnasium, market-data, and SB3 stacks.
 
 ```bash
 python -m venv .venv
@@ -92,151 +80,35 @@ python -m ruff format --check src tests
 python -m pytest
 ```
 
-The test suite includes a tiny deterministic in-memory smoke path covering
-OHLCV data, feature construction, train-only scaling, the environment, a
-prediction-only policy interface, and metric evaluation. It intentionally uses
-no meaningful model training. GitHub Actions runs only these lightweight checks;
-never add full RL training, market-data downloads, notebook runs, or complete
-historical walk-forward evaluation to CI.
+The tests use tiny deterministic in-memory OHLCV fixtures. They cover feature
+alignment, train-only scaling, execution ordering, friction, baseline/policy
+evaluation consistency, equity/drawdown reporting, and walk-forward boundary
+construction. They do not download prices, run the notebook, train an RL
+agent, or execute a full historical walk-forward evaluation.
 
-For reproducible scripts, build an immutable `ExperimentConfig` or deserialize
-one explicitly with `ExperimentConfig.from_mapping(...)`, record
-`config.to_dict()` beside results, and call `seed_everything(config.random_seed)`
-before constructing supported optional model interfaces. `make_model` continues
-to pass the same seed to SB3 models. `configure_logging()` provides concise
-package-level progress logs without changing the application's root logger.
+## Running an experiment independently
 
----
+Install research dependencies with `python -m pip install -e ".[research]"`,
+open `Forex_RL_Agent_Final.ipynb`, and set an explicit `ExperimentConfig`.
+Record `config.to_dict()` next to artifacts and call `seed_everything()` before
+optional model construction. Build folds, train only on each train slice,
+select only using its validation slice, and report the held-out test slice
+alongside the corresponding baselines. `RUN_FULL_WALKFORWARD` is intentionally
+opt-in: it may download data and run substantial model training.
 
-## Data & Features
+`generate_trade_report()` writes metrics, trade, and equity/drawdown CSVs plus
+an HTML summary. `generate_walkforward_report()` writes per-fold CSV/HTML and
+aggregate JSON. Store artifacts outside version control.
 
-- Data source: `yfinance` (e.g., **EURUSD=X**, auto‑adjusted).  
-- Indicators (subset used in the notebook): `ema20`, `rsi`, `macd`, `macd_signal`, `macd_hist`,  
-  Bollinger (`bb_upper`, `bb_middle`, `bb_lower`), `atr`/`atr_n`, and `ret`.  
-- The notebook includes safeguards to flatten `yfinance` MultiIndex columns and clean/align OHLCV.
+## Limitations and next research steps
 
----
+This is a single-instrument, bar-based simulator. Intrabar fill assumptions,
+spread/cost calibration, liquidity, data quality, market regimes, and model
+instability require sensitivity analysis before any conclusion. The baseline
+generators are deliberately simple comparators, not production strategies.
+Walk-forward results can still be over-interpreted if researchers tune heavily
+against repeated validation/test feedback. No live execution, portfolio
+allocation, or financial recommendation is implemented.
 
-## Environment Details
-
-- **Observation**: last `WINDOW_SIZE` rows of z‑scored features → `Box(low=-inf, high=inf, shape=(WINDOW_SIZE, N_FEATURES))`  
-- **Actions**: `0=flat, 1=long, 2=short` (no manual close; exits handled by rules)  
-- **Reward**: realized PnL in **R** where `R = price risk / stop size`.  
-- **Exits** (intraday priority): **stop‑loss** → **take‑profit** → **time‑based**; configurable ATR multipliers.  
-- **Friction**: `slippage` changes entry prices. `transaction_cost` is retained
-  for configuration compatibility but is currently inert; this preserved
-  limitation does not simulate costs when set above zero.
-- **Penalties**: optional invalid‑action penalty, drawdown penalty, turnover penalty.
-
----
-
-## Walk‑Forward Training
-
-- Build folds with `(train → val → test)` windows and **step‑ahead** increments.  
-- **Scaler** is fit on **train** only, then applied to val/test.  
-- Models are trained on **train** and selected using **R‑based validation** (risk‑aware metrics).  
-- Final backtest is run on **test**, and consolidated in an **HTML report**.
-
----
-
-## Algorithms
-
-Switch via the `ALGO` config (examples):
-```python
-ALGO = "DQN"         # vanilla DQN
-ALGO = "QRDQN"       # quantile-regression DQN (risk-aware)
-ALGO = "RPPO"          # PPO with LSTM policy
-```
-- Custom `policy_kwargs` are provided for each (MLP and LSTM).  
-- Vectorized environments via `DummyVecEnv` / `SubprocVecEnv`.  
-- Reproducible seeds are set for NumPy, Python, and SB3.
-
----
-
-## Key Configuration (edit in the Config cell)
-
-```python
-# Asset & range
-SYMBOL = "EURUSD=X"
-START_DATE = "2015-01-01"
-END_DATE   = "2025-08-01"
-
-# Features & window
-WINDOW_SIZE = 64            # lookback length
-POSITION_RISK_FRAC = 0.01   # position sizing (fractional risk)
-
-# Risk/exit
-SL_ATR_MULT = 1.8           # stop-loss ATR multiple
-TP_ATR_MULT = 2.2           # take-profit ATR multiple
-MAX_BARS_IN_TRADE = 18      # time-based exit
-
-# Friction & penalties
-TRANSACTION_COST = 0.0
-SLIPPAGE = 0.0
-INVALID_ACTION_PENALTY = 0.0
-DD_PENALTY = 0.0
-TURNOVER_PENALTY = 0.0
-
-# SB3
-ALGO = "DQN"                # or "QRDQN", "RPPO"
-TOTAL_TIMESTEPS = 400_000
-EVAL_FREQ = 120_000
-N_ENVS = 24                 # vectorized envs
-WF_N_ENVS = N_ENVS
-
-# Walk-forward (example)
-MIN_TRAIN_MONTHS = 24
-VAL_MONTHS = 9
-TEST_MONTHS = 6
-STEP_MONTHS = 12
-```
-
-> Tip: Use the synthetic test suite for refactor validation. Any training budget,
-> including a small experiment, is a deliberate research run rather than a test.
-
----
-
-## Outputs & Reports
-
-The notebook writes artifacts under a run directory (e.g., `logs_rl/`), including:
-- Selected model checkpoints and training logs when training is explicitly run.
-- `reports/`: `wf_results.csv`, `wf_aggregates.json`, and `wf_report.html`.
-- Use `zip_directory` explicitly to create a local report archive. No Drive-copy
-  helper or one-click training/smoke workflow is included.
-
----
-
-## Reproducibility
-
-- Deterministic seeds are set for Python/NumPy/SB3.  
-- The scaler is re‑fit on each fold’s training split only.  
-- The environment is stateless across episodes apart from the current position and window buffer.
-
----
-
-## Roadmap (ideas)
-
-- Transaction cost/slippage calibration and sensitivity analysis  
-- Multi‑instrument training (e.g., other FX pairs)  
-- Regime features (volatility state, dollar index, macro calendar)  
-- Hyper‑parameter sweeps and Optuna integration  
-- Ensemble of policies across folds
-
----
-
-## Disclaimer
-
-This repository is for **research/education**. Markets involve risk. **No financial advice**.
-
----
-
-## Citation
-
-If you find this helpful, please cite or star the repo. Libraries used include:  
-`gymnasium`, `stable-baselines3`, `sb3-contrib`, `torch`, `numpy`, `pandas`, `yfinance`, `finta`, `mplfinance`, `matplotlib`.
-
----
-
-## License
-
-MIT — feel free to use and adapt. (Change this if your project uses a different license.)
+See `docs/STEP1_CURRENT_IMPLEMENTATION_MAP.md` for preserved historical
+caveats and `docs/STEP2_REFACTOR.md` for the package-refactor map.

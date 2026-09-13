@@ -147,19 +147,17 @@ def test_train_fold_uses_wf_envs_reloads_best_and_closes(monkeypatch, tmp_path):
     assert observed["env"] is train_env and len(closed) == 4 and save_dir != second_save_dir
 
 
-def test_baseline_simulator_zero_atr_uses_zero_units():
+def test_baseline_simulator_zero_atr_uses_environment_atr_floor():
     df = frame(3)
     df["atr"] = 0.0
     trades = _simulate_trades_from_signals(df, pd.Series([1, 0, 0], index=df.index), 0.01, 2.0, 2.0, 1)
-    assert trades.iloc[0].units == 0.0 and trades.iloc[0].realized_R == 0.0
+    assert trades.iloc[0].units > 0.0 and np.isclose(trades.iloc[0].realized_R, -1.0)
 
 
-def test_baseline_simulator_zero_stop_multiplier_keeps_stop_at_entry():
+def test_baseline_simulator_zero_stop_multiplier_matches_environment_no_close_behavior():
     df = frame(3)
     trades = _simulate_trades_from_signals(df, pd.Series([1, 0, 0], index=df.index), 0.01, 0.0, 2.0, 1)
-    trade = trades.iloc[0]
-    assert trade.stop == trade.entry_price
-    assert trade.units == 0.0 and trade.realized_R == 0.0
+    assert trades.empty
 
 
 def test_walkforward_restores_full_schema_and_routes_algo_and_wf_parallelism(monkeypatch):
@@ -200,6 +198,7 @@ def test_walkforward_restores_full_schema_and_routes_algo_and_wf_parallelism(mon
                 "trades": trades,
                 "r": agent,
                 "mtm": pd.DataFrame({"equity_pct": [1.0, 1.2]}),
+                "metrics": {"sortino": 1.5, "turnover": 10.0, "trade_count": 3},
                 "sharpe": 2.0,
                 "maxdd_pct": -0.1,
             }
@@ -212,6 +211,12 @@ def test_walkforward_restores_full_schema_and_routes_algo_and_wf_parallelism(mon
     result = run_walkforward("QRDQN", df, [fold], cfg, trainer, ["ema20"], ["open", "high", "low", "close", "atr"])
     expected = {
         "fold",
+        "train_start",
+        "train_end",
+        "val_start",
+        "val_end",
+        "test_start",
+        "test_end",
         "total_R",
         "avg_R",
         "PF",
@@ -220,7 +225,10 @@ def test_walkforward_restores_full_schema_and_routes_algo_and_wf_parallelism(mon
         "MAR_R",
         "trades",
         "sharpe",
+        "sortino",
         "maxDD_pct",
+        "turnover",
+        "trade_count",
         "return_pct",
         "exit_mix",
         "flat_R",

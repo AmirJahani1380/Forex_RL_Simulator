@@ -8,32 +8,30 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 import numpy as np
+import pandas as pd
 
-from .evaluation import R_metrics, _daily_sharpe, _max_drawdown
+from .evaluation import performance_metrics
 
 
 def extended_metrics(trades, mtm_df):
-    r = R_metrics(trades)
-    returns = mtm_df["daily_ret"].values if mtm_df is not None and len(mtm_df) else np.array([])
-    drawdown = _max_drawdown(mtm_df["equity_pct"].values) if len(returns) else np.nan
-    downside = returns.copy()
-    downside[downside > 0] = 0
-    sortino = (
-        np.nan
-        if len(returns) < 2 or np.sqrt(np.mean(downside**2)) <= 1e-12
-        else float(np.mean(returns) / np.sqrt(np.mean(downside**2)) * np.sqrt(252))
-    )
-    cagr = (1 + returns).prod() ** (252 / len(returns)) - 1 if len(returns) else np.nan
-    duration = (trades.exit_t - trades.entry_t).values if trades is not None and len(trades) else np.array([])
+    metrics = performance_metrics(trades, mtm_df)
+    if trades is None or len(trades) == 0:
+        return {**metrics, "avg_bars_in_trade": np.nan, "med_bars_in_trade": np.nan, "avg_holding_days": np.nan}
+    if "bars_in_trade" in trades:
+        duration = pd.to_numeric(trades["bars_in_trade"], errors="coerce").dropna().to_numpy()
+        return {
+            **metrics,
+            "avg_bars_in_trade": float(np.mean(duration)) if len(duration) else np.nan,
+            "med_bars_in_trade": float(np.median(duration)) if len(duration) else np.nan,
+            "avg_holding_days": np.nan,
+        }
+    duration = pd.to_datetime(trades["exit_t"]) - pd.to_datetime(trades["entry_t"])
+    days = duration.dt.total_seconds().dropna().to_numpy() / 86_400.0
     return {
-        **r,
-        "sharpe": _daily_sharpe(returns) if len(returns) else np.nan,
-        "sortino": sortino,
-        "maxDD_pct": drawdown,
-        "CAGR": cagr,
-        "calmar": cagr / abs(drawdown) if drawdown < 0 else np.nan,
-        "avg_bars_in_trade": float(np.mean(duration)) if len(duration) else np.nan,
-        "med_bars_in_trade": float(np.median(duration)) if len(duration) else np.nan,
+        **metrics,
+        "avg_bars_in_trade": np.nan,
+        "med_bars_in_trade": np.nan,
+        "avg_holding_days": float(np.mean(days)) if len(days) else np.nan,
     }
 
 
@@ -42,25 +40,44 @@ def generate_trade_report(df_slice, trades, mtm_df, equity_r=None, out_prefix="l
     prefix = Path(out_prefix)
     prefix.parent.mkdir(parents=True, exist_ok=True)
     metrics = extended_metrics(trades, mtm_df)
-    json_path, csv_path, html_path = (
+    json_path, csv_path, equity_path, html_path = (
         prefix.with_name(prefix.name + "_metrics.json"),
         prefix.with_name(prefix.name + "_trades.csv"),
+        prefix.with_name(prefix.name + "_equity.csv"),
         prefix.with_suffix(".html"),
     )
     json_path.write_text(
         json.dumps(metrics, indent=2, default=lambda value: None if np.isnan(value) else value), encoding="utf-8"
     )
     trades.to_csv(csv_path, index=False)
+    (mtm_df if mtm_df is not None else pd.DataFrame()).to_csv(equity_path, index=True)
     html_path.write_text(
         f"<html><body><h2>RL Strategy Report</h2><p>Generated: {datetime.now(timezone.utc).isoformat()}</p><pre>{json.dumps(metrics, indent=2, default=str)}</pre><p>Trades: {csv_path.name}</p></body></html>",
         encoding="utf-8",
     )
-    return {"html": str(html_path), "csv": str(csv_path), "json": str(json_path), "metrics": metrics}
+    return {
+        "html": str(html_path),
+        "csv": str(csv_path),
+        "equity_csv": str(equity_path),
+        "json": str(json_path),
+        "metrics": metrics,
+    }
 
 
 def aggregate_walkforward_results(results):
     """Notebook cell 17 aggregation, retained as a local reusable helper."""
-    columns = ["total_R", "PF", "win_rate", "trades", "sharpe", "maxDD_pct", "MAR_R", "return_pct"]
+    columns = [
+        "total_R",
+        "PF",
+        "win_rate",
+        "trades",
+        "sharpe",
+        "sortino",
+        "maxDD_pct",
+        "MAR_R",
+        "return_pct",
+        "turnover",
+    ]
     aggregate = {name: {} for name in ("mean", "median", "std", "min", "max")}
     for column in columns:
         if column in results:

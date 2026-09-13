@@ -64,7 +64,7 @@ class BaselineCharacterizationTests(unittest.TestCase):
         eod.step(0)
         self.assertEqual(eod.trades[0]["reason"], "eod")
 
-    def test_slippage_affects_time_exit_pnl_for_long_and_short_and_cost_is_inert(self):
+    def test_slippage_and_configured_transaction_cost_affect_execution_pnl(self):
         rows = market([(10, 10, 10, 10, 1), (10, 12, 8, 10, 1), (10, 10, 10, 10, 1), (10, 10, 10, 10, 1)])
         slipped = ForexEnv(
             rows,
@@ -88,7 +88,8 @@ class BaselineCharacterizationTests(unittest.TestCase):
             rows, features(4), window_size=1, sl_atr_mult=99, tp_atr_mult=99, max_bars_in_trade=1, transaction_cost=0.7
         )
         costly.step(1)
-        self.assertAlmostEqual(costly.trades[0]["pnl_value"], base.trades[0]["pnl_value"])
+        self.assertLess(costly.trades[0]["pnl_value"], base.trades[0]["pnl_value"])
+        self.assertGreater(costly.trades[0]["transaction_cost"], 0)
         short = ForexEnv(
             rows, features(4), window_size=1, sl_atr_mult=99, tp_atr_mult=99, max_bars_in_trade=1, slippage=0.25
         )
@@ -146,7 +147,7 @@ class BaselineCharacterizationTests(unittest.TestCase):
         self.assertAlmostEqual(_max_drawdown(np.array([1.0, 2.0, 1.0, 3.0])), -0.5)
         self.assertTrue(np.isfinite(_daily_sharpe(np.array([0.01, -0.01, 0.02]))))
 
-    def test_agent_integer_trade_timestamps_leave_datetime_mtm_flat(self):
+    def test_agent_integer_trade_timestamps_are_resolved_for_datetime_mtm(self):
         dated = market(
             [
                 (10, 10, 10, 10, 1),
@@ -164,8 +165,8 @@ class BaselineCharacterizationTests(unittest.TestCase):
         self.assertEqual(trades.iloc[0]["entry_t"], 1)
         self.assertGreater(trades.iloc[0]["realized_R"], 0)
         mtm = daily_mtm_from_trades(dated, trades)
-        np.testing.assert_array_equal(mtm["equity_pct"].values, np.ones(len(dated)))
-        self.assertTrue(np.isnan(_daily_sharpe(mtm["daily_ret"].values)))
+        self.assertGreater(mtm["equity_pct"].iloc[-1], 1.0)
+        self.assertGreater(mtm["daily_ret"].iloc[2], 0.0)
 
 
 if __name__ == "__main__":

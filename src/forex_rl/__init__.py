@@ -3,7 +3,14 @@
 from .config import ExperimentConfig
 from .data import download_eurusd
 from .environment import ForexEnv, ForexEnvSB3, make_scaled_env
-from .evaluation import R_metrics, daily_mtm_from_trades
+from .evaluation import (
+    ExecutionAssumptions,
+    R_metrics,
+    daily_mtm_from_trades,
+    drawdown_series,
+    performance_metrics,
+    trade_turnover,
+)
 from .features import compute_indicators
 from .models import make_model, model_kwargs, train_one_fold, validation_score
 from .preprocessing import ZScoreScaler, make_scaled_frames
@@ -21,6 +28,7 @@ from .walk_forward import build_walkforward_folds
 
 __all__ = [
     "ExperimentConfig",
+    "ExecutionAssumptions",
     "ForexEnv",
     "ForexEnvSB3",
     "R_metrics",
@@ -28,6 +36,7 @@ __all__ = [
     "build_walkforward_folds",
     "compute_indicators",
     "daily_mtm_from_trades",
+    "drawdown_series",
     "download_eurusd",
     "make_scaled_env",
     "make_model",
@@ -37,6 +46,8 @@ __all__ = [
     "backtest_model",
     "run_baselines",
     "run_walkforward",
+    "performance_metrics",
+    "trade_turnover",
     "validation_score",
     "aggregate_walkforward_results",
     "extended_metrics",

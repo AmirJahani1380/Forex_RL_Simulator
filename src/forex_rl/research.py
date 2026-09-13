@@ -8,104 +8,47 @@ import numpy as np
 import pandas as pd
 
 from .environment import ForexEnv
-from .evaluation import R_metrics, _daily_sharpe, _max_drawdown, daily_mtm_from_trades
+from .evaluation import R_metrics, daily_mtm_from_trades, performance_metrics
 
 
-def _simulate_trades_from_signals(df, signals, position_frac, sl_atr_mult, tp_atr_mult, max_bars_in_trade):
-    """Original baseline simulator: exits first, then opens; no slippage/costs."""
-    equity, trades, position, entry = 1.0, [], 0, None
-    for t, (_, row) in enumerate(df.iterrows()):
-        if position:
-            entry["bars"] += 1
-            if position == 1:
-                exit_price = (
-                    entry["stop"]
-                    if row.low <= entry["stop"]
-                    else entry["take"]
-                    if row.high >= entry["take"]
-                    else row.close
-                    if entry["bars"] >= max_bars_in_trade
-                    else None
-                )
-            else:
-                exit_price = (
-                    entry["stop"]
-                    if row.high >= entry["stop"]
-                    else entry["take"]
-                    if row.low <= entry["take"]
-                    else row.close
-                    if entry["bars"] >= max_bars_in_trade
-                    else None
-                )
-            if exit_price is not None:
-                pnl = (
-                    (exit_price - entry["price"]) * entry["units"]
-                    if position == 1
-                    else (entry["price"] - exit_price) * entry["units"]
-                )
-                risk = abs(entry["price"] - entry["stop"]) * entry["units"]
-                realized = pnl / risk if risk > 1e-12 else 0.0
-                equity = max(1e-12, equity + realized * position_frac * equity)
-                trades.append(
-                    {
-                        "type": "long" if position == 1 else "short",
-                        "entry_t": entry["timestamp"],
-                        "exit_t": df.index[t],
-                        "entry_price": entry["price"],
-                        "exit_price": float(exit_price),
-                        "stop": entry["stop"],
-                        "take": entry["take"],
-                        "units": entry["units"],
-                        "realized_R": float(realized),
-                        "pnl_value": float(pnl),
-                        "reason": "sl"
-                        if exit_price == entry["stop"]
-                        else "tp"
-                        if exit_price == entry["take"]
-                        else "time",
-                        "bars_in_trade": entry["bars"],
-                    }
-                )
-                position, entry = 0, None
-        if not position and t < len(df) - 1 and int(signals.iloc[t]) in (1, 2):
-            position, price = (1 if int(signals.iloc[t]) == 1 else -1), float(row.close)
-            risk_per_unit = float(row.atr) * max(1e-12, sl_atr_mult)
-            stop_distance = float(row.atr) * sl_atr_mult
-            units = position_frac * equity / risk_per_unit if risk_per_unit > 1e-12 else 0.0
-            entry = {
-                "timestamp": df.index[t],
-                "price": price,
-                "stop": price - stop_distance if position == 1 else price + stop_distance,
-                "take": price + float(row.atr) * tp_atr_mult if position == 1 else price - float(row.atr) * tp_atr_mult,
-                "units": units,
-                "bars": 0,
-            }
-    if position:
-        exit_price = float(df.close.iloc[-1])
-        pnl = (
-            (exit_price - entry["price"]) * entry["units"]
-            if position == 1
-            else (entry["price"] - exit_price) * entry["units"]
-        )
-        risk = abs(entry["price"] - entry["stop"]) * entry["units"]
-        realized = pnl / risk if risk > 1e-12 else 0.0
-        trades.append(
-            {
-                "type": "long" if position == 1 else "short",
-                "entry_t": entry["timestamp"],
-                "exit_t": df.index[-1],
-                "entry_price": entry["price"],
-                "exit_price": exit_price,
-                "stop": entry["stop"],
-                "take": entry["take"],
-                "units": entry["units"],
-                "realized_R": float(realized),
-                "pnl_value": float(pnl),
-                "reason": "eod",
-                "bars_in_trade": entry["bars"],
-            }
-        )
-    return pd.DataFrame(trades)
+def _simulate_trades_from_signals(
+    df,
+    signals,
+    position_frac,
+    sl_atr_mult,
+    tp_atr_mult,
+    max_bars_in_trade,
+    transaction_cost=0.0,
+    slippage=0.0,
+    window_size=0,
+):
+    """Run baseline signals through the same canonical execution engine as RL.
+
+    An action opens at the current close and is immediately tested against that
+    bar's SL, TP, then time-exit conditions. ``window_size`` applies the same
+    observation warmup as policy evaluation. The zero default supports isolated
+    execution tests; production baseline comparisons pass the experiment's
+    configured window size.
+    """
+    market = df[["open", "high", "low", "close", "atr"]].copy()
+    features = pd.DataFrame({"baseline_signal": np.zeros(len(df))}, index=df.index)
+    env = ForexEnv(
+        market,
+        features,
+        window_size=window_size,
+        position_frac=position_frac,
+        sl_atr_mult=sl_atr_mult,
+        tp_atr_mult=tp_atr_mult,
+        max_bars_in_trade=max_bars_in_trade,
+        transaction_cost=transaction_cost,
+        slippage=slippage,
+    )
+    action_series = signals.reindex(df.index).fillna(0).astype(int)
+    _, done = env.reset()[0], False
+    while not done:
+        action = int(action_series.iloc[env.t]) if env.t < len(df) - 1 else 0
+        _, _, done, _, _ = env.step(action)
+    return env.get_trade_log()
 
 
 def baseline_flat(df):
@@ -148,15 +91,25 @@ def run_baselines(df, config):
         "trend": baseline_trend(df),
     }.items():
         trades = _simulate_trades_from_signals(
-            df, signals, config.position_risk_frac, config.sl_atr_mult, config.tp_atr_mult, config.max_bars_in_trade
+            df,
+            signals,
+            config.position_risk_frac,
+            config.sl_atr_mult,
+            config.tp_atr_mult,
+            config.max_bars_in_trade,
+            config.transaction_cost,
+            config.slippage,
+            config.window_size,
         )
         mtm = daily_mtm_from_trades(df, trades, config.position_risk_frac)
+        metrics = performance_metrics(trades, mtm)
         outcomes[name] = {
             "trades": trades,
             "r": R_metrics(trades),
             "mtm": mtm,
-            "sharpe": _daily_sharpe(mtm.daily_ret.values) if len(mtm) else np.nan,
-            "mdd_pct": _max_drawdown(mtm.equity_pct.values) if len(mtm) else np.nan,
+            "metrics": metrics,
+            "sharpe": metrics["sharpe"],
+            "mdd_pct": metrics["maxDD_pct"],
         }
     return outcomes
 
@@ -188,13 +141,15 @@ def backtest_model(model, scaler, df_slice, feature_cols, price_cols, config, al
         obs, _, done, _, _ = env.step(int(np.asarray(action).reshape(-1)[0]))
     trades = env.get_trade_log()
     mtm = daily_mtm_from_trades(df_slice, trades, config.position_risk_frac)
+    metrics = performance_metrics(trades, mtm)
     return {
         "trades": trades,
         "equity_R": equity_R_from_trades(trades, config.position_risk_frac),
         "r": R_metrics(trades),
         "mtm": mtm,
-        "sharpe": _daily_sharpe(mtm.daily_ret.values) if len(mtm) else np.nan,
-        "maxdd_pct": _max_drawdown(mtm.equity_pct.values) if len(mtm) else np.nan,
+        "metrics": metrics,
+        "sharpe": metrics["sharpe"],
+        "maxdd_pct": metrics["maxDD_pct"],
     }
 
 
@@ -216,6 +171,12 @@ def run_walkforward(algo, df_all, folds, config, train_fold, feature_cols, price
         rows.append(
             {
                 "fold": fold["fold"],
+                "train_start": fold["train_start"],
+                "train_end": fold["train_end"],
+                "val_start": fold["val_start"],
+                "val_end": fold["val_end"],
+                "test_start": fold["test_start"],
+                "test_end": fold["test_end"],
                 "total_R": agent["total_R"],
                 "avg_R": agent["avg_R"],
                 "PF": agent["profit_factor"],
@@ -224,7 +185,10 @@ def run_walkforward(algo, df_all, folds, config, train_fold, feature_cols, price
                 "MAR_R": agent["MAR_R"],
                 "trades": agent["trades"],
                 "sharpe": result["sharpe"],
+                "sortino": result["metrics"]["sortino"],
                 "maxDD_pct": result["maxdd_pct"],
+                "turnover": result["metrics"]["turnover"],
+                "trade_count": result["metrics"]["trade_count"],
                 "return_pct": mtm["equity_pct"].iloc[-1] - 1.0 if len(mtm) else 0.0,
                 "exit_mix": json.dumps(result["trades"].reason.value_counts().to_dict())
                 if len(result["trades"])
