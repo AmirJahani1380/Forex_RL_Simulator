@@ -44,8 +44,8 @@ methodological caveats.
 ## Quickstart
 
 ### Option A — Google Colab
-1. Upload/open `Forex_RL_Agent_Final.ipynb` in Colab (enable **GPU**).  
-2. Run **Install & Imports**.  
+1. Clone/upload the complete repository, not just the notebook.
+2. In a notebook cell, install it with `!pip install -e ".[research]"`.
 3. In **Config (edit here)**, set symbol/dates and hyper‑parameters. Defaults are:
    ```python
    SYMBOL = "EURUSD=X"
@@ -62,8 +62,8 @@ methodological caveats.
 # 1) Create env (recommended)
 python -m venv .venv && source .venv/bin/activate   # (Windows) .venv\Scripts\activate
 
-# 2) Install deps
-pip install numpy pandas matplotlib mplfinance yfinance finta gymnasium torch stable-baselines3 sb3-contrib
+# 2) Install this repository and its optional research dependencies
+pip install -e ".[research]"
 
 # 3) Launch Jupyter and open the notebook
 pip install jupyterlab
@@ -132,9 +132,9 @@ WINDOW_SIZE = 64            # lookback length
 POSITION_RISK_FRAC = 0.01   # position sizing (fractional risk)
 
 # Risk/exit
-SL_ATR_MULT = 2.0           # stop-loss ATR multiple
-TP_ATR_MULT = 2.5           # take-profit ATR multiple
-MAX_BARS_IN_TRADE = 30      # time-based exit
+SL_ATR_MULT = 1.8           # stop-loss ATR multiple
+TP_ATR_MULT = 2.2           # take-profit ATR multiple
+MAX_BARS_IN_TRADE = 18      # time-based exit
 
 # Friction & penalties
 TRANSACTION_COST = 0.0
@@ -144,17 +144,17 @@ DD_PENALTY = 0.0
 TURNOVER_PENALTY = 0.0
 
 # SB3
-ALGO = "QRDQN"              # or "DQN", "RecurrentPPO"
-TOTAL_TIMESTEPS = 1_200_000
-EVAL_FREQ = 140_000
-N_ENVS = 8                  # vectorized envs
+ALGO = "DQN"                # or "QRDQN", "RPPO"
+TOTAL_TIMESTEPS = 400_000
+EVAL_FREQ = 120_000
+N_ENVS = 24                 # vectorized envs
 WF_N_ENVS = N_ENVS
 
 # Walk-forward (example)
-MIN_TRAIN_MONTHS = 36
-VAL_MONTHS = 6
+MIN_TRAIN_MONTHS = 24
+VAL_MONTHS = 9
 TEST_MONTHS = 6
-STEP_MONTHS = 6
+STEP_MONTHS = 12
 ```
 
 > Tip: Use the synthetic test suite for refactor validation. Any training budget,

@@ -6,7 +6,7 @@ import pandas as pd
 
 from forex_rl import ExperimentConfig, generate_trade_report, model_kwargs, run_baselines
 from forex_rl.models import validation_score
-from forex_rl.research import baseline_random, baseline_trend
+from forex_rl.research import _simulate_trades_from_signals, baseline_random, baseline_trend, run_walkforward
 from forex_rl.reporting import generate_walkforward_report, zip_directory
 from forex_rl.environment import make_env_factory
 from forex_rl.preprocessing import ZScoreScaler
@@ -89,7 +89,31 @@ def test_train_fold_uses_wf_envs_reloads_best_and_closes(monkeypatch, tmp_path):
     monkeypatch.setattr(models, "make_model", lambda *args: Model())
     monkeypatch.setattr(models, "make_rmetrics_callback", lambda *args, **kwargs: Callback())
     monkeypatch.setattr(models, "require_sb3", lambda: (Loader, Loader, Loader, object, object))
-    cfg = ExperimentConfig(log_dir=str(tmp_path), wf_n_envs=3)
+    cfg = ExperimentConfig(log_dir=str(tmp_path), n_envs=3, wf_n_envs=7)
     model, scaler, _ = models.train_one_fold("DQN", frame(), frame(), cfg, ["ema20"], ["open", "high", "low", "close", "atr"])
     assert model == "reloaded" and scaler == "scaler" and observed["n_envs"] == 3
     assert observed["env"] is train_env and len(closed) == 2
+
+
+def test_baseline_simulator_zero_atr_uses_zero_units():
+    df = frame(3); df["atr"] = 0.
+    trades = _simulate_trades_from_signals(df, pd.Series([1, 0, 0], index=df.index), .01, 2., 2., 1)
+    assert trades.iloc[0].units == 0. and trades.iloc[0].realized_R == 0.
+
+
+def test_walkforward_restores_full_schema_and_routes_algo_and_wf_parallelism(monkeypatch):
+    import forex_rl.research as research
+    df = frame(5)
+    fold = {"fold": 4, "train_start": df.index[0], "train_end": df.index[1], "val_start": df.index[1], "val_end": df.index[2], "test_start": df.index[2], "test_end": df.index[4]}
+    cfg, observed = ExperimentConfig(algo="DQN", wf_n_envs=9), {}
+    def trainer(algo, train, val, config, features, prices, n_envs):
+        observed.update(train_algo=algo, n_envs=n_envs); return object(), object(), "unused"
+    trades = pd.DataFrame({"reason": ["tp"]})
+    agent = {"total_R": 3., "avg_R": 1., "profit_factor": 1.5, "win_rate": 2 / 3, "maxDD_R": -1., "MAR_R": 3., "trades": 3}
+    monkeypatch.setattr(research, "backtest_model", lambda *args, **kwargs: (observed.update(backtest_algo=kwargs["algo"]) or {"trades": trades, "r": agent, "mtm": pd.DataFrame({"equity_pct": [1., 1.2]}), "sharpe": 2., "maxdd_pct": -.1}))
+    baseline = {"r": {"total_R": .5, "profit_factor": 1.1}, "sharpe": .2}
+    monkeypatch.setattr(research, "run_baselines", lambda *args: {"flat": baseline, "random": baseline, "trend": baseline})
+    result = run_walkforward("QRDQN", df, [fold], cfg, trainer, ["ema20"], ["open", "high", "low", "close", "atr"])
+    expected = {"fold", "total_R", "avg_R", "PF", "win_rate", "maxDD_R", "MAR_R", "trades", "sharpe", "maxDD_pct", "return_pct", "exit_mix", "flat_R", "flat_PF", "flat_sharpe", "rand_R", "rand_PF", "rand_sharpe", "trend_R", "trend_PF", "trend_sharpe"}
+    assert set(result.columns) == expected and np.isclose(result.iloc[0].return_pct, .2)
+    assert observed == {"train_algo": "QRDQN", "n_envs": 9, "backtest_algo": "QRDQN"}

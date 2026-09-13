@@ -77,7 +77,7 @@ def make_rmetrics_callback(eval_fn, save_dir, eval_freq, min_trades=6):
     return RMetricsEvalCallback()
 
 
-def train_one_fold(algo, train_df, validation_df, config, feature_cols, price_cols):
+def train_one_fold(algo, train_df, validation_df, config, feature_cols, price_cols, n_envs=None):
     """Original opt-in one-fold training flow with deterministic R-metric selection.
 
     No caller reaches this path accidentally: it is the only function here that
@@ -86,12 +86,13 @@ def train_one_fold(algo, train_df, validation_df, config, feature_cols, price_co
     from .environment import make_scaled_env
     from .research import backtest_model
     Path(config.log_dir).mkdir(parents=True, exist_ok=True)
+    parallelism = config.n_envs if n_envs is None else n_envs
     train_env, eval_env, scaler = make_scaled_env(train_df, validation_df, feature_cols, price_cols,
-                                                   config.environment_kwargs, config.random_seed, config.wf_n_envs)
+                                                   config.environment_kwargs, config.random_seed, parallelism)
     model = make_model(algo, train_env, config)
     save_dir = str(Path(config.log_dir) / f"{algo}_fold_{str(train_df.index.max())[:10]}")
     callback = make_rmetrics_callback(
-        lambda candidate: backtest_model(candidate, scaler, validation_df, feature_cols, price_cols, config)["r"],
+        lambda candidate: backtest_model(candidate, scaler, validation_df, feature_cols, price_cols, config, algo=algo)["r"],
         save_dir, config.eval_freq, min_trades=6,
     )
     try:
