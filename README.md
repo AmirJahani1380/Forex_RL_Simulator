@@ -74,6 +74,38 @@ leakage-safe vector-environment setup, optional model construction, and an
 opt-in full walk-forward runner. It deliberately does not train merely by being
 opened or imported.
 
+### Clean install and lightweight verification
+
+For development and CI-safe verification, install only the small development
+extra. It does not install Gymnasium/SB3, download market data, or run training.
+
+```bash
+python -m venv .venv
+# Windows: .venv\Scripts\activate
+# Linux/macOS: source .venv/bin/activate
+python -m pip install --upgrade pip
+python -m pip install -e ".[dev]"
+python -m compileall -q src tests
+python -c "import forex_rl; import forex_rl_simulator"
+python -m ruff check src tests
+python -m ruff format --check src tests
+python -m pytest
+```
+
+The test suite includes a tiny deterministic in-memory smoke path covering
+OHLCV data, feature construction, train-only scaling, the environment, a
+prediction-only policy interface, and metric evaluation. It intentionally uses
+no meaningful model training. GitHub Actions runs only these lightweight checks;
+never add full RL training, market-data downloads, notebook runs, or complete
+historical walk-forward evaluation to CI.
+
+For reproducible scripts, build an immutable `ExperimentConfig` or deserialize
+one explicitly with `ExperimentConfig.from_mapping(...)`, record
+`config.to_dict()` beside results, and call `seed_everything(config.random_seed)`
+before constructing supported optional model interfaces. `make_model` continues
+to pass the same seed to SB3 models. `configure_logging()` provides concise
+package-level progress logs without changing the application's root logger.
+
 ---
 
 ## Data & Features

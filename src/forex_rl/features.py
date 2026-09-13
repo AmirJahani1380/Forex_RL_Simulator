@@ -19,11 +19,14 @@ def compute_indicators(df: pd.DataFrame) -> pd.DataFrame:
     out["macd_hist"] = out["macd"] - out["macd_signal"]
     middle, std = out["close"].rolling(20).mean(), out["close"].rolling(20).std(ddof=0)
     out["bb_middle"], out["bb_upper"], out["bb_lower"] = middle, middle + 2 * std, middle - 2 * std
-    ranges = pd.concat([
-        (out["high"] - out["low"]).abs(),
-        (out["high"] - out["close"].shift()).abs(),
-        (out["low"] - out["close"].shift()).abs(),
-    ], axis=1)
+    ranges = pd.concat(
+        [
+            (out["high"] - out["low"]).abs(),
+            (out["high"] - out["close"].shift()).abs(),
+            (out["low"] - out["close"].shift()).abs(),
+        ],
+        axis=1,
+    )
     out["atr"] = ranges.max(axis=1).ewm(alpha=1 / 14, adjust=False).mean()
     out["atr_n"] = out["atr"].to_numpy() / out["close"].to_numpy()
     out["ret"] = out["close"].pct_change()

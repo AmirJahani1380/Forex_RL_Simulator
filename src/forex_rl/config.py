@@ -1,6 +1,7 @@
 """Explicit, serializable experiment configuration used by the notebook."""
 
-from dataclasses import dataclass
+from dataclasses import asdict, dataclass, fields
+from typing import Any, Mapping
 
 
 @dataclass(frozen=True)
@@ -36,12 +37,29 @@ class ExperimentConfig:
     log_dir: str = "./logs_rl"
     report_dir: str = "./logs_rl/reports"
 
+    @classmethod
+    def from_mapping(cls, values: Mapping[str, Any]) -> "ExperimentConfig":
+        """Create a config while rejecting misspelled keys instead of ignoring them."""
+        unknown = set(values) - {field.name for field in fields(cls)}
+        if unknown:
+            raise ValueError(f"Unknown configuration keys: {sorted(unknown)}")
+        return cls(**dict(values))
+
+    def to_dict(self) -> dict[str, Any]:
+        """Return a JSON-serializable snapshot suitable for recording a research run."""
+        return asdict(self)
+
     @property
-    def environment_kwargs(self):
+    def environment_kwargs(self) -> dict[str, float | int]:
         return {
-            "window_size": self.window_size, "position_frac": self.position_risk_frac,
-            "sl_atr_mult": self.sl_atr_mult, "tp_atr_mult": self.tp_atr_mult,
-            "max_bars_in_trade": self.max_bars_in_trade, "transaction_cost": self.transaction_cost,
-            "slippage": self.slippage, "invalid_action_penalty": self.invalid_action_penalty,
-            "dd_penalty": self.dd_penalty, "turnover_penalty": self.turnover_penalty,
+            "window_size": self.window_size,
+            "position_frac": self.position_risk_frac,
+            "sl_atr_mult": self.sl_atr_mult,
+            "tp_atr_mult": self.tp_atr_mult,
+            "max_bars_in_trade": self.max_bars_in_trade,
+            "transaction_cost": self.transaction_cost,
+            "slippage": self.slippage,
+            "invalid_action_penalty": self.invalid_action_penalty,
+            "dd_penalty": self.dd_penalty,
+            "turnover_penalty": self.turnover_penalty,
         }
