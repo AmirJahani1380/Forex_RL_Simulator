@@ -27,17 +27,17 @@
 
 ## Repo Contents
 
-- `Forex_RL_Agent_Final.ipynb` — the main notebook (Colab/local ready).  
-  It contains:
-  1) Install & imports  
-  2) **Config (edit here)**  
-  3) Data & indicators  
-  4) Scaler & walk‑forward splits  
-  5) **`ForexEnv` with R‑reward** (+ SB3 wrapper)  
-  6) VecEnv builder (Dummy/Subproc)  
-  7) Metrics & plotting  
-  8) Training & evaluation (R‑based model selection)  
-  9) **Smoke test**, **Full walk‑forward**, **HTML report & ZIP**, **Copy to Drive**
+- `src/forex_rl/` — reusable package: config, data, features, preprocessing,
+  environment, evaluation, walk-forward boundaries, and optional model imports.
+- `Forex_RL_Agent_Final.ipynb` — a thin experiment interface that imports the
+  package. It prepares data and an environment but does not launch training.
+- `tests/test_baseline_characterization.py` — compact regression tests for the
+  established trading and data-processing semantics.
+
+Install the dependency-light core with `pip install -e .`; use
+`pip install -e .[research]` only when data download or SB3 training is needed.
+See `docs/STEP1_CURRENT_IMPLEMENTATION_MAP.md` for intentionally preserved
+methodological caveats.
 
 ---
 
