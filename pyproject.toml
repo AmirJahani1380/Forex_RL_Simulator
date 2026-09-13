@@ -1,0 +1,40 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "forex-rl-simulator"
+version = "0.1.0"
+description = "Reusable research components for the Forex RL simulator"
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = ["numpy>=1.23", "pandas>=1.5"]
+
+[project.optional-dependencies]
+research = [
+  "gymnasium>=0.29",
+  "yfinance>=0.2",
+  "stable-baselines3>=2.0",
+  "sb3-contrib>=2.0",
+]
+dev = ["pytest>=7", "ruff>=0.8"]
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["src"]
+
+[tool.ruff]
+target-version = "py310"
+line-length = 120
+extend-exclude = [".pytest_cache"]
+
+[tool.ruff.lint]
+select = ["E", "F", "I"]
+ignore = ["E501"] # HTML report templates intentionally contain long literal strings.
+
+[tool.ruff.format]
+quote-style = "double"
+indent-style = "space"

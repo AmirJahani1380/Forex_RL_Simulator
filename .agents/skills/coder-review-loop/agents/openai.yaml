@@ -1,7 +1,0 @@
-interface:
-  display_name: "Coder Review Loop"
-  short_description: "Iterative coder and read-only reviewer workflow"
-  default_prompt: "Use $coder-review-loop to implement this task through a coder and read-only reviewer loop."
-
-policy:
-  allow_implicit_invocation: false
