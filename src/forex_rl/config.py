@@ -25,3 +25,23 @@ class ExperimentConfig:
     use_rolling: bool = True
     rolling_train_months: int = 36
     random_seed: int = 42
+    algo: str = "DQN"
+    total_timesteps: int = 400_000
+    eval_freq: int = 120_000
+    n_envs: int = 24
+    wf_n_envs: int = 24
+    rppo_n_steps: int = 128
+    qrdqn_n_quantiles: int = 200
+    min_trades_val: int = 4
+    log_dir: str = "./logs_rl"
+    report_dir: str = "./logs_rl/reports"
+
+    @property
+    def environment_kwargs(self):
+        return {
+            "window_size": self.window_size, "position_frac": self.position_risk_frac,
+            "sl_atr_mult": self.sl_atr_mult, "tp_atr_mult": self.tp_atr_mult,
+            "max_bars_in_trade": self.max_bars_in_trade, "transaction_cost": self.transaction_cost,
+            "slippage": self.slippage, "invalid_action_penalty": self.invalid_action_penalty,
+            "dd_penalty": self.dd_penalty, "turnover_penalty": self.turnover_penalty,
+        }

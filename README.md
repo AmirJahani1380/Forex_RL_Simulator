@@ -70,7 +70,10 @@ pip install numpy pandas matplotlib mplfinance yfinance finta gymnasium torch st
 pip install jupyterlab
 jupyter lab
 ```
-Then run the cells as in the Colab flow.
+The notebook exposes the same workflow as explicit stages: data/features,
+leakage-safe vector-environment setup, optional model construction, and an
+opt-in full walk-forward runner. It deliberately does not train merely by being
+opened or imported.
 
 ---
 

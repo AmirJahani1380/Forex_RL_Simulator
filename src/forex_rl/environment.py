@@ -10,8 +10,17 @@ from __future__ import annotations
 import numpy as np
 import pandas as pd
 
+try:  # Keep normal package imports dependency-light.
+    import gymnasium as gym
+    from gymnasium import spaces
+except ImportError:  # pragma: no cover - exercised in minimal installations
+    gym = None
+    spaces = None
 
-class ForexEnv:
+_EnvBase = gym.Env if gym is not None else object
+
+
+class ForexEnv(_EnvBase):
     def __init__(self, market_df, feat_df, window_size=64, position_frac=0.01, sl_atr_mult=2.0,
                  tp_atr_mult=2.5, max_bars_in_trade=30, transaction_cost=0.0, slippage=0.0,
                  invalid_action_penalty=0.0, dd_penalty=0.0, turnover_penalty=0.0, seed=42):
@@ -23,7 +32,13 @@ class ForexEnv:
         self.transaction_cost, self.slippage = float(transaction_cost), float(slippage)
         self.invalid_action_penalty, self.dd_penalty = float(invalid_action_penalty), float(dd_penalty)
         self.turnover_penalty, self.rng = float(turnover_penalty), np.random.default_rng(seed)
+        if gym is not None:
+            super().__init__()
         self.n_features, self.action_count, self.entries, self.trades = self.feat.shape[1], 3, [], []
+        if spaces is not None:
+            self.action_space = spaces.Discrete(3)
+            self.observation_space = spaces.Box(low=-np.inf, high=np.inf,
+                                                shape=(self.window_size, self.n_features), dtype=np.float32)
         self._reset_state()
 
     def _reset_state(self):
@@ -32,6 +47,8 @@ class ForexEnv:
         self.units, self.bars_in_trade, self.open_trade_i = 0.0, 0, None
 
     def reset(self, seed=None, options=None):
+        if gym is not None:
+            super().reset(seed=seed)
         self._reset_state()
         return self._get_obs(), {}
 
@@ -96,3 +113,47 @@ class ForexEnv:
 
     def get_entries_log(self):
         return pd.DataFrame(self.entries)
+
+
+if gym is not None:
+    class ForexEnvSB3(gym.Wrapper):
+        """Original SB3 shim: flatten a window/features observation for MlpPolicy."""
+        def __init__(self, env: ForexEnv):
+            super().__init__(env)
+            window, features = env.observation_space.shape
+            self.observation_space = spaces.Box(low=-np.inf, high=np.inf,
+                                                shape=(window * features,), dtype=np.float32)
+            self.action_space = env.action_space
+
+        def reset(self, **kwargs):
+            obs, info = self.env.reset(**kwargs)
+            return obs.reshape(-1).astype(np.float32), info
+
+        def step(self, action):
+            obs, reward, done, truncated, info = self.env.step(action)
+            return obs.reshape(-1).astype(np.float32), reward, done, truncated, info
+else:
+    class ForexEnvSB3:  # pragma: no cover - only used when optional Gym is missing
+        def __init__(self, *args, **kwargs):
+            raise ImportError("Install forex-rl-simulator[research] for the Gymnasium/SB3 adapter.")
+
+
+def make_env_factory(df_slice, scaler, feature_cols, price_cols, env_kwargs, seed):
+    """Create the original vector-environment thunk; scaler is never refit here."""
+    def build():
+        env = ForexEnv(df_slice[price_cols].copy(), scaler.transform(df_slice[feature_cols].copy()), seed=seed, **env_kwargs)
+        return ForexEnvSB3(env)
+    return build
+
+
+def make_scaled_env(train_df, eval_df, feature_cols, price_cols, env_kwargs, seed=42, n_envs=1):
+    """Fit one scaler on training features and build train/evaluation SB3 VecEnvs."""
+    if gym is None:
+        raise ImportError("Install forex-rl-simulator[research] for vectorized environments.")
+    from stable_baselines3.common.vec_env import DummyVecEnv, SubprocVecEnv
+    from .preprocessing import ZScoreScaler
+    scaler = ZScoreScaler(); scaler.fit(train_df[feature_cols])
+    train_fns = [make_env_factory(train_df, scaler, feature_cols, price_cols, env_kwargs, seed + index) for index in range(n_envs)]
+    train_env = SubprocVecEnv(train_fns) if n_envs > 1 else DummyVecEnv(train_fns)
+    eval_env = DummyVecEnv([make_env_factory(eval_df, scaler, feature_cols, price_cols, env_kwargs, seed + 999)])
+    return train_env, eval_env, scaler
