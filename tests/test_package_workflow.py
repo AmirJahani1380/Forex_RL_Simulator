@@ -5,7 +5,7 @@ import numpy as np
 import pandas as pd
 
 from forex_rl import ExperimentConfig, generate_trade_report, model_kwargs, run_baselines
-from forex_rl.models import validation_score
+from forex_rl.models import make_rmetrics_callback, validation_score
 from forex_rl.research import _simulate_trades_from_signals, baseline_random, baseline_trend, run_walkforward
 from forex_rl.reporting import generate_walkforward_report, zip_directory
 from forex_rl.environment import make_env_factory
@@ -60,6 +60,16 @@ def test_selection_gates_and_mar_ranking_are_exact():
     assert validation_score({**valid, "maxDD_R": -2.01}) == -np.inf
 
 
+def test_disabled_eval_callback_never_modulos_or_evaluates(monkeypatch, tmp_path):
+    import forex_rl.models as models
+    class BaseCallback:
+        def __init__(self, verbose=0): self.n_calls = 0
+    monkeypatch.setattr(models, "require_sb3", lambda: (object, object, object, BaseCallback, object))
+    evaluated = []
+    callback = make_rmetrics_callback(lambda model: evaluated.append(model), tmp_path, eval_freq=0)
+    assert callback._on_step() is True and evaluated == []
+
+
 def test_characterized_baseline_generators_emit_at_most_one_entry():
     df = frame(12)
     random_signal = baseline_random(df, p_enter=1., seed=123)
@@ -90,9 +100,10 @@ def test_train_fold_uses_wf_envs_reloads_best_and_closes(monkeypatch, tmp_path):
     monkeypatch.setattr(models, "make_rmetrics_callback", lambda *args, **kwargs: Callback())
     monkeypatch.setattr(models, "require_sb3", lambda: (Loader, Loader, Loader, object, object))
     cfg = ExperimentConfig(log_dir=str(tmp_path), n_envs=3, wf_n_envs=7)
-    model, scaler, _ = models.train_one_fold("DQN", frame(), frame(), cfg, ["ema20"], ["open", "high", "low", "close", "atr"])
+    model, scaler, save_dir = models.train_one_fold("DQN", frame(), frame(), cfg, ["ema20"], ["open", "high", "low", "close", "atr"])
+    _, _, second_save_dir = models.train_one_fold("DQN", frame(), frame(), cfg, ["ema20"], ["open", "high", "low", "close", "atr"])
     assert model == "reloaded" and scaler == "scaler" and observed["n_envs"] == 3
-    assert observed["env"] is train_env and len(closed) == 2
+    assert observed["env"] is train_env and len(closed) == 4 and save_dir != second_save_dir
 
 
 def test_baseline_simulator_zero_atr_uses_zero_units():

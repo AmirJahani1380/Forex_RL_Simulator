@@ -1,7 +1,7 @@
 # Forex RL — Refined R‑Reward
 
 > End‑to‑end reinforcement learning (RL) pipeline for EUR/USD with **R‑multiple rewards**, ATR‑based risk, and **walk‑forward cross‑validation**.  
-> Built around a custom `gymnasium` environment + Stable‑Baselines3 (DQN/QR‑DQN/RecurrentPPO), robust feature engineering, and rich reporting.
+> Built around a custom `gymnasium` environment + Stable‑Baselines3 (DQN/QR‑DQN/RPPO), robust feature engineering, and rich reporting.
 
 <p align="center">
   <em>Research only — not financial advice.</em>
@@ -19,7 +19,7 @@
 - **Robust data pipeline** (via `yfinance`) with **EMA, RSI, MACD, Bollinger Bands, ATR**, returns, etc.
 - **Scaler** fit on **train only**, applied to val/test to prevent leakage.
 - **Walk‑forward CV** with configurable train/val/test windows and step size.
-- **Algorithms**: `DQN`, `QRDQN` (quantile regression DQN), `RecurrentPPO` (LSTM). Easy to switch.
+- **Algorithms**: `DQN`, `QRDQN` (quantile regression DQN), `RPPO` (LSTM). Easy to switch.
 - **Metrics & reports**: trade list in R, daily MTM, Sharpe/Sortino/MaxDD,
   and explicit local CSV/JSON/HTML report and ZIP helpers.
 
@@ -91,7 +91,9 @@ opened or imported.
 - **Actions**: `0=flat, 1=long, 2=short` (no manual close; exits handled by rules)  
 - **Reward**: realized PnL in **R** where `R = price risk / stop size`.  
 - **Exits** (intraday priority): **stop‑loss** → **take‑profit** → **time‑based**; configurable ATR multipliers.  
-- **Friction**: `transaction_cost`, `slippage` (default 0.0; set >0 to simulate costs).  
+- **Friction**: `slippage` changes entry prices. `transaction_cost` is retained
+  for configuration compatibility but is currently inert; this preserved
+  limitation does not simulate costs when set above zero.
 - **Penalties**: optional invalid‑action penalty, drawdown penalty, turnover penalty.
 
 ---
@@ -111,7 +113,7 @@ Switch via the `ALGO` config (examples):
 ```python
 ALGO = "DQN"         # vanilla DQN
 ALGO = "QRDQN"       # quantile-regression DQN (risk-aware)
-ALGO = "RecurrentPPO"  # PPO with LSTM policy
+ALGO = "RPPO"          # PPO with LSTM policy
 ```
 - Custom `policy_kwargs` are provided for each (MLP and LSTM).  
 - Vectorized environments via `DummyVecEnv` / `SubprocVecEnv`.  

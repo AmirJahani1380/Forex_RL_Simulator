@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from pathlib import Path
+from uuid import uuid4
 
 
 def require_sb3():
@@ -65,6 +66,8 @@ def make_rmetrics_callback(eval_fn, save_dir, eval_freq, min_trades=6):
         def __init__(self):
             super().__init__(verbose=0); self.best_score = float("-inf"); self.best_model_path = None
         def _on_step(self):
+            if eval_freq <= 0:
+                return True
             if self.n_calls % eval_freq:
                 return True
             metrics = eval_fn(self.model)
@@ -90,7 +93,7 @@ def train_one_fold(algo, train_df, validation_df, config, feature_cols, price_co
     train_env, eval_env, scaler = make_scaled_env(train_df, validation_df, feature_cols, price_cols,
                                                    config.environment_kwargs, config.random_seed, parallelism)
     model = make_model(algo, train_env, config)
-    save_dir = str(Path(config.log_dir) / f"{algo}_fold_{str(train_df.index.max())[:10]}")
+    save_dir = str(Path(config.log_dir) / f"{algo}_fold_{str(train_df.index.max())[:10]}_{uuid4().hex[:10]}")
     callback = make_rmetrics_callback(
         lambda candidate: backtest_model(candidate, scaler, validation_df, feature_cols, price_cols, config, algo=algo)["r"],
         save_dir, config.eval_freq, min_trades=6,
