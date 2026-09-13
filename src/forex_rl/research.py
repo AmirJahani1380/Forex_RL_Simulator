@@ -41,14 +41,41 @@ def _simulate_trades_from_signals(df, signals, position_frac, sl_atr_mult, tp_at
     return pd.DataFrame(trades)
 
 
-def baseline_flat(df): return pd.Series(0, index=df.index)
-def baseline_random(df, seed=42): return pd.Series(np.random.default_rng(seed).integers(0, 3, len(df)), index=df.index)
-def baseline_trend(df, fast=50, slow=200): return pd.Series(np.where(df.ema20 > df.close.rolling(slow).mean(), 1, 2), index=df.index).fillna(0).astype(int)
+def baseline_flat(df):
+    return pd.Series(0, index=df.index)
+
+
+def baseline_random(df, p_enter=.03, seed=123):
+    """Step 1 generator, including its one-entry ``in_pos`` behavior."""
+    rng, signal, in_pos = np.random.default_rng(seed), np.zeros(len(df), dtype=int), 0
+    for index in range(len(df) - 1):
+        if in_pos == 0 and rng.uniform() < p_enter:
+            signal[index] = 1 if rng.uniform() < .5 else 2
+            in_pos = signal[index]
+        elif in_pos != 0:
+            signal[index] = 0
+    return pd.Series(signal, index=df.index)
+
+
+def baseline_trend(df, fast=50, slow=200):
+    """Step 1 EMA crossover generator, including its one-entry behavior."""
+    fast_ma = df["close"].ewm(span=fast, adjust=False).mean()
+    slow_ma = df["close"].ewm(span=slow, adjust=False).mean()
+    crossings, signal, in_pos = (fast_ma > slow_ma).astype(int).diff().fillna(0), np.zeros(len(df), dtype=int), 0
+    for index in range(len(df) - 1):
+        if in_pos == 0:
+            if crossings.iloc[index] == 1:
+                signal[index], in_pos = 1, 1
+            elif crossings.iloc[index] == -1:
+                signal[index], in_pos = 2, 2
+        else:
+            signal[index] = 0
+    return pd.Series(signal, index=df.index)
 
 
 def run_baselines(df, config):
     outcomes = {}
-    for name, signals in {"flat": baseline_flat(df), "random": baseline_random(df, config.random_seed), "trend": baseline_trend(df)}.items():
+    for name, signals in {"flat": baseline_flat(df), "random": baseline_random(df), "trend": baseline_trend(df)}.items():
         trades = _simulate_trades_from_signals(df, signals, config.position_risk_frac, config.sl_atr_mult, config.tp_atr_mult, config.max_bars_in_trade)
         mtm = daily_mtm_from_trades(df, trades, config.position_risk_frac)
         outcomes[name] = {"trades": trades, "r": R_metrics(trades), "mtm": mtm,

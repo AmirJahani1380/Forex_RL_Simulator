@@ -31,7 +31,7 @@ class ExperimentConfig:
     n_envs: int = 24
     wf_n_envs: int = 24
     rppo_n_steps: int = 128
-    qrdqn_n_quantiles: int = 200
+    qrdqn_n_quantiles: int = 51
     min_trades_val: int = 4
     log_dir: str = "./logs_rl"
     report_dir: str = "./logs_rl/reports"

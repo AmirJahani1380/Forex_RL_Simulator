@@ -20,8 +20,8 @@
 - **Scaler** fit on **train only**, applied to val/test to prevent leakage.
 - **Walk‑forward CV** with configurable train/val/test windows and step size.
 - **Algorithms**: `DQN`, `QRDQN` (quantile regression DQN), `RecurrentPPO` (LSTM). Easy to switch.
-- **Metrics & reports**: trade list in R, daily MTM, Sharpe/Sortino/MaxDD, underwater plots, histograms, monthly heatmap.  
-  One‑click **smoke test** + full **HTML report** (with ZIP bundle).
+- **Metrics & reports**: trade list in R, daily MTM, Sharpe/Sortino/MaxDD,
+  and explicit local CSV/JSON/HTML report and ZIP helpers.
 
 ---
 
@@ -53,10 +53,9 @@ methodological caveats.
    END_DATE   = "2025-08-01"
    ```
 4. Run the notebook cells in order through **Data & Features** → **Scaler & Walk‑Forward** → **Env** → **Training**.
-5. (Optional) Run **Smoke Test** to sanity‑check the full pipeline quickly.
-6. Run **Full Walk‑Forward CV**.
-7. Run **HTML Report & ZIP** to generate artifacts under `logs_rl/reports`.  
-8. (Colab) Run **Save results in drive** to copy `/content/logs_rl` → `MyDrive/results/logs_rl`.
+5. Set `RUN_FULL_WALKFORWARD = True` only when you intentionally want training.
+6. The opt-in runner writes local walk-forward CSV/JSON/HTML outputs; call the
+   explicit ZIP helper if an archive is needed.
 
 ### Option B — Local (Linux/Mac/Windows)
 ```bash
@@ -158,21 +157,18 @@ TEST_MONTHS = 6
 STEP_MONTHS = 6
 ```
 
-> Tip: Start with the **Smoke Test** to validate everything end‑to‑end, then switch to your full budget for WF.
+> Tip: Use the synthetic test suite for refactor validation. Any training budget,
+> including a small experiment, is a deliberate research run rather than a test.
 
 ---
 
 ## Outputs & Reports
 
 The notebook writes artifacts under a run directory (e.g., `logs_rl/`), including:
-- `best_model.zip` per fold, `vecnormalize.pkl` (if used), and training logs.  
-- `reports/`:  
-  - `wf_results.csv` (fold‑level summary)  
-  - Per‑fold PNGs (equity curve, underwater, histograms, monthly heatmap)  
-  - `rl_report_smoke.html` (from the smoke test, when enabled)  
-  - `wf_report_YYYYMMDD_HHMM.html` + a **ZIP** bundle for sharing
-
-On Colab, a helper cell copies `/content/logs_rl` → `MyDrive/results/logs_rl`.
+- Selected model checkpoints and training logs when training is explicitly run.
+- `reports/`: `wf_results.csv`, `wf_aggregates.json`, and `wf_report.html`.
+- Use `zip_directory` explicitly to create a local report archive. No Drive-copy
+  helper or one-click training/smoke workflow is included.
 
 ---
 

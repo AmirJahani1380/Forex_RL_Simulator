@@ -9,12 +9,12 @@ from .preprocessing import ZScoreScaler, make_scaled_frames
 from .walk_forward import build_walkforward_folds
 from .models import make_model, model_kwargs, train_one_fold, validation_score
 from .research import backtest_model, run_baselines, run_walkforward
-from .reporting import extended_metrics, generate_trade_report
+from .reporting import aggregate_walkforward_results, extended_metrics, generate_trade_report, generate_walkforward_report, zip_directory
 
 __all__ = [
     "ExperimentConfig", "ForexEnv", "ForexEnvSB3", "R_metrics", "ZScoreScaler",
     "build_walkforward_folds", "compute_indicators", "daily_mtm_from_trades",
     "download_eurusd", "make_scaled_env", "make_model", "make_scaled_frames", "model_kwargs", "train_one_fold",
     "backtest_model", "run_baselines", "run_walkforward", "validation_score",
-    "extended_metrics", "generate_trade_report",
+    "aggregate_walkforward_results", "extended_metrics", "generate_trade_report", "generate_walkforward_report", "zip_directory",
 ]

@@ -20,7 +20,7 @@ def model_kwargs(algo, config):
     """Notebook hyperparameters, returned without constructing or training a model."""
     name = algo.upper()
     if name == "DQN":
-        return {"learning_rate": 3e-5, "buffer_size": 250_000, "learning_starts": 10_000,
+        return {"learning_rate": 2e-5, "buffer_size": 250_000, "learning_starts": 10_000,
                 "batch_size": 1024, "tau": .01, "gamma": .99, "train_freq": 4,
                 "gradient_steps": 4, "exploration_fraction": .40, "exploration_final_eps": .10}
     if name == "QRDQN":
@@ -39,7 +39,8 @@ def make_model(algo, env, config):
     name, kwargs = algo.upper(), model_kwargs(algo, config)
     common = {"verbose": 1, "seed": config.random_seed, "device": "auto"}
     if name == "DQN":
-        return DQN("MlpPolicy", env, policy_kwargs={"activation_fn": nn.ReLU, "net_arch": [256, 256]}, **kwargs, **common)
+        import torch as th
+        return DQN("MlpPolicy", env, policy_kwargs={"activation_fn": nn.ReLU, "net_arch": [256, 256], "optimizer_class": th.optim.AdamW, "optimizer_kwargs": {"weight_decay": 1e-5}}, **kwargs, **common)
     if name == "QRDQN":
         n_quantiles = kwargs.pop("n_quantiles")
         return QRDQN("MlpPolicy", env, policy_kwargs={"activation_fn": nn.ReLU, "net_arch": [256, 256], "n_quantiles": n_quantiles}, **kwargs, **common)
@@ -47,10 +48,11 @@ def make_model(algo, env, config):
 
 
 def validation_score(metrics, min_trades=6):
-    """Preserve the notebook callback's hard-coded six-trade selection gate."""
-    if metrics["trades"] < min_trades or metrics["profit_factor"] != metrics["profit_factor"]:
+    """Exact notebook selection: PF/trade/DD gates, then MAR or total-R ranking."""
+    pf, mar = metrics["profit_factor"], metrics["MAR_R"]
+    if pf != pf or pf < 1.0 or metrics["trades"] < min_trades or metrics["maxDD_R"] < -2.0:
         return float("-inf")
-    return metrics["total_R"]
+    return metrics["total_R"] if mar is None or mar != mar else mar
 
 
 def make_rmetrics_callback(eval_fn, save_dir, eval_freq, min_trades=6):
@@ -69,7 +71,7 @@ def make_rmetrics_callback(eval_fn, save_dir, eval_freq, min_trades=6):
             score = validation_score(metrics, min_trades=min_trades)
             if score > self.best_score:
                 Path(save_dir).mkdir(parents=True, exist_ok=True)
-                self.best_score = score; self.best_model_path = str(Path(save_dir) / "best_model")
+                self.best_score = score; self.best_model_path = str(Path(save_dir) / f"best_model_step_{self.model.num_timesteps}.zip")
                 self.model.save(self.best_model_path)
             return True
     return RMetricsEvalCallback()
@@ -83,8 +85,9 @@ def train_one_fold(algo, train_df, validation_df, config, feature_cols, price_co
     """
     from .environment import make_scaled_env
     from .research import backtest_model
+    Path(config.log_dir).mkdir(parents=True, exist_ok=True)
     train_env, eval_env, scaler = make_scaled_env(train_df, validation_df, feature_cols, price_cols,
-                                                   config.environment_kwargs, config.random_seed, config.n_envs)
+                                                   config.environment_kwargs, config.random_seed, config.wf_n_envs)
     model = make_model(algo, train_env, config)
     save_dir = str(Path(config.log_dir) / f"{algo}_fold_{str(train_df.index.max())[:10]}")
     callback = make_rmetrics_callback(
@@ -93,6 +96,11 @@ def train_one_fold(algo, train_df, validation_df, config, feature_cols, price_co
     )
     try:
         model.learn(total_timesteps=config.total_timesteps, callback=callback)
+        if callback.best_model_path and Path(callback.best_model_path).exists():
+            DQN, QRDQN, RecurrentPPO, _, _ = require_sb3()
+            loader = RecurrentPPO if algo.upper() == "RPPO" else QRDQN if algo.upper() == "QRDQN" else DQN
+            model = loader.load(callback.best_model_path, env=train_env, device="auto")
     finally:
+        train_env.close()
         eval_env.close()
     return model, scaler, save_dir
