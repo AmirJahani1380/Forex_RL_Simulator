@@ -20,8 +20,7 @@ max_cycles=5
 ```
 
 Use those values as defaults when omitted. Accept other model and effort values only when the
-current sub-agent tool supports the combination. Never silently replace an unavailable choice;
-ask the user to select another. `max_cycles` must be a positive integer and counts reviewer
+current sub-agent tool supports the combination. Prefer the requested coder/reviewer model and reasoning settings when the collaboration interface supports them. If the current interface does not expose model, role, or reasoning-effort selection, use the available sub-agent configuration while preserving the required separation between one implementation agent and one independent read-only review agent. Report the actual available configuration used. Only return BLOCKED when the environment cannot provide separate implementation and review agents or cannot enforce the reviewer’s read-only behavior. `max_cycles` must be a positive integer and counts reviewer
 verdicts of `REVISE`.
 
 Before spawning an agent, build a self-contained task contract from the active user request. It
