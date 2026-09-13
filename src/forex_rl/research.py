@@ -32,9 +32,10 @@ def _simulate_trades_from_signals(df, signals, position_frac, sl_atr_mult, tp_at
                 position, entry = 0, None
         if not position and t < len(df) - 1 and int(signals.iloc[t]) in (1, 2):
             position, price = (1 if int(signals.iloc[t]) == 1 else -1), float(row.close)
-            distance = float(row.atr) * max(1e-12, sl_atr_mult)
-            units = position_frac * equity / distance if distance > 1e-12 else 0.0
-            entry = {"timestamp": df.index[t], "price": price, "stop": price - distance if position == 1 else price + distance, "take": price + float(row.atr) * tp_atr_mult if position == 1 else price - float(row.atr) * tp_atr_mult, "units": units, "bars": 0}
+            risk_per_unit = float(row.atr) * max(1e-12, sl_atr_mult)
+            stop_distance = float(row.atr) * sl_atr_mult
+            units = position_frac * equity / risk_per_unit if risk_per_unit > 1e-12 else 0.0
+            entry = {"timestamp": df.index[t], "price": price, "stop": price - stop_distance if position == 1 else price + stop_distance, "take": price + float(row.atr) * tp_atr_mult if position == 1 else price - float(row.atr) * tp_atr_mult, "units": units, "bars": 0}
     if position:
         exit_price = float(df.close.iloc[-1]); pnl = (exit_price - entry["price"]) * entry["units"] if position == 1 else (entry["price"] - exit_price) * entry["units"]
         risk = abs(entry["price"] - entry["stop"]) * entry["units"]; realized = pnl / risk if risk > 1e-12 else 0.0

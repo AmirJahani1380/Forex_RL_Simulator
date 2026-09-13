@@ -112,6 +112,14 @@ def test_baseline_simulator_zero_atr_uses_zero_units():
     assert trades.iloc[0].units == 0. and trades.iloc[0].realized_R == 0.
 
 
+def test_baseline_simulator_zero_stop_multiplier_keeps_stop_at_entry():
+    df = frame(3)
+    trades = _simulate_trades_from_signals(df, pd.Series([1, 0, 0], index=df.index), .01, 0., 2., 1)
+    trade = trades.iloc[0]
+    assert trade.stop == trade.entry_price
+    assert trade.units == 0. and trade.realized_R == 0.
+
+
 def test_walkforward_restores_full_schema_and_routes_algo_and_wf_parallelism(monkeypatch):
     import forex_rl.research as research
     df = frame(5)
