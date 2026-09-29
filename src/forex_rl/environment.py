@@ -1,9 +1,4 @@
-"""Dependency-light trading environment mechanics.
-
-This preserves the notebook's action timing, entry pricing, SL/TP/time ordering,
-and accounting.  A Gymnasium adapter can be added by research callers without
-changing this core implementation.
-"""
+"""Dependency-light trading environment mechanics."""
 
 from __future__ import annotations
 
@@ -112,9 +107,27 @@ class ForexEnv(_EnvBase):
         self.units, self.bars_in_trade, self.open_trade_i, self.entry_cost = 0.0, 0, None, 0.0
         return float(realized_r - penalty)
 
+    def _check_exit(self, high, low, close):
+        self.bars_in_trade += 1
+        if self.position == 1:
+            if low <= self.stop_price:
+                return self._reward_from_exit(self.stop_price, "sl")
+            if high >= self.take_price:
+                return self._reward_from_exit(self.take_price, "tp")
+        else:
+            if high >= self.stop_price:
+                return self._reward_from_exit(self.stop_price, "sl")
+            if low <= self.take_price:
+                return self._reward_from_exit(self.take_price, "tp")
+        if self.bars_in_trade >= self.max_bars_in_trade:
+            return self._reward_from_exit(close, "time")
+        return 0.0
+
     def step(self, action):
         reward, row = 0.0, self.mkt.iloc[self.t]
         high, low, close, atr = float(row.high), float(row.low), float(row.close), max(float(row.atr), 1e-6)
+        # A close-priced entry cannot encounter this bar's earlier high or low.
+        was_open = self.position != 0
         if action in (1, 2):
             if self.position == 0:
                 self.position = 1 if action == 1 else -1
@@ -138,26 +151,15 @@ class ForexEnv(_EnvBase):
                 self.open_trade_i, reward = len(self.entries) - 1, reward - self.turnover_penalty
             else:
                 reward -= self.invalid_action_penalty
-        if self.position != 0:
-            self.bars_in_trade += 1
-            if self.position == 1:
-                if low <= self.stop_price:
-                    reward += self._reward_from_exit(self.stop_price, "sl")
-                elif high >= self.take_price:
-                    reward += self._reward_from_exit(self.take_price, "tp")
-                elif self.bars_in_trade >= self.max_bars_in_trade:
-                    reward += self._reward_from_exit(close, "time")
-            else:
-                if high >= self.stop_price:
-                    reward += self._reward_from_exit(self.stop_price, "sl")
-                elif low <= self.take_price:
-                    reward += self._reward_from_exit(self.take_price, "tp")
-                elif self.bars_in_trade >= self.max_bars_in_trade:
-                    reward += self._reward_from_exit(close, "time")
+        if was_open:
+            reward += self._check_exit(high, low, close)
         self.t += 1
         done = self.t >= len(self.mkt) - 1
         if done and self.position != 0:
-            reward += self._reward_from_exit(float(self.mkt.iloc[-1].close), "eod")
+            final = self.mkt.iloc[-1]
+            reward += self._check_exit(float(final.high), float(final.low), float(final.close))
+            if self.position != 0:
+                reward += self._reward_from_exit(float(final.close), "eod")
         return self._get_obs(), float(reward), done, False, {}
 
     def get_trade_log(self):

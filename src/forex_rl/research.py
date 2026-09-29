@@ -9,6 +9,7 @@ import pandas as pd
 
 from .environment import ForexEnv
 from .evaluation import R_metrics, daily_mtm_from_trades, performance_metrics
+from .walk_forward import slice_fold
 
 
 def _simulate_trades_from_signals(
@@ -24,8 +25,8 @@ def _simulate_trades_from_signals(
 ):
     """Run baseline signals through the same canonical execution engine as RL.
 
-    An action opens at the current close and is immediately tested against that
-    bar's SL, TP, then time-exit conditions. ``window_size`` applies the same
+    An action opens at the current close; exits start on the next bar.
+    ``window_size`` applies the same
     observation warmup as policy evaluation. The zero default supports isolated
     execution tests; production baseline comparisons pass the experiment's
     configured window size.
@@ -56,30 +57,21 @@ def baseline_flat(df):
 
 
 def baseline_random(df, p_enter=0.03, seed=123):
-    """Step 1 generator, including its one-entry ``in_pos`` behavior."""
-    rng, signal, in_pos = np.random.default_rng(seed), np.zeros(len(df), dtype=int), 0
+    """Seeded entry candidates; the execution engine ignores them while occupied."""
+    rng, signal = np.random.default_rng(seed), np.zeros(len(df), dtype=int)
     for index in range(len(df) - 1):
-        if in_pos == 0 and rng.uniform() < p_enter:
+        if rng.uniform() < p_enter:
             signal[index] = 1 if rng.uniform() < 0.5 else 2
-            in_pos = signal[index]
-        elif in_pos != 0:
-            signal[index] = 0
     return pd.Series(signal, index=df.index)
 
 
 def baseline_trend(df, fast=50, slow=200):
-    """Step 1 EMA crossover generator, including its one-entry behavior."""
+    """EMA direction entry candidates, allowing re-entry after a close."""
     fast_ma = df["close"].ewm(span=fast, adjust=False).mean()
     slow_ma = df["close"].ewm(span=slow, adjust=False).mean()
-    crossings, signal, in_pos = (fast_ma > slow_ma).astype(int).diff().fillna(0), np.zeros(len(df), dtype=int), 0
-    for index in range(len(df) - 1):
-        if in_pos == 0:
-            if crossings.iloc[index] == 1:
-                signal[index], in_pos = 1, 1
-            elif crossings.iloc[index] == -1:
-                signal[index], in_pos = 2, 2
-        else:
-            signal[index] = 0
+    # Match the policy observation: decide from completed prior bars.
+    signal = np.where(fast_ma.shift() > slow_ma.shift(), 1, np.where(fast_ma.shift() < slow_ma.shift(), 2, 0))
+    signal[-1:] = 0
     return pd.Series(signal, index=df.index)
 
 
@@ -157,9 +149,7 @@ def run_walkforward(algo, df_all, folds, config, train_fold, feature_cols, price
     """Opt-in orchestration; caller supplies training, so this function never trains implicitly."""
     rows = []
     for fold in folds:
-        train = df_all.loc[fold["train_start"] : fold["train_end"]].copy()
-        val = df_all.loc[fold["val_start"] : fold["val_end"]].copy()
-        test = df_all.loc[fold["test_start"] : fold["test_end"]].copy()
+        train, val, test = (slice_fold(df_all, fold, part) for part in ("train", "val", "test"))
         model, scaler, save_dir = train_fold(
             algo, train, val, config, feature_cols, price_cols, n_envs=config.wf_n_envs
         )

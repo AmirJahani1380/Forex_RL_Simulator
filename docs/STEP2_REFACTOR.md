@@ -1,5 +1,11 @@
 # Step 2: package refactor
 
+This is a historical Step 2 record. Subsequent bug corrections use half-open
+fold slices and next-bar exits for close-priced entries; baselines can trade
+repeatedly, with EMA signals based on the prior completed bar. The bounded
+synthetic DQN notebook has since been executed. See the README for current
+methodology and validation limits.
+
 ## Architecture
 
 Reusable implementation now lives under `src/forex_rl/`:

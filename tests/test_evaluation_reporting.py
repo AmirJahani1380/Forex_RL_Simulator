@@ -56,13 +56,13 @@ def test_baseline_cost_and_slippage_match_configured_execution_assumptions():
     assert ExecutionAssumptions(0.01, 0.1).transaction_cost == 0.01
 
 
-def test_baseline_reuses_environment_same_bar_execution_and_friction():
+def test_baseline_reuses_environment_next_bar_execution_and_friction():
     index = pd.date_range("2024-01-01", periods=3)
     frame = pd.DataFrame(
         {
             "open": [10.0] * 3,
-            "high": [12.0, 10.0, 10.0],
-            "low": [8.0, 10.0, 10.0],
+            "high": [12.0, 12.0, 10.0],
+            "low": [8.0, 8.0, 10.0],
             "close": [10.0] * 3,
             "atr": [1.0] * 3,
         },
@@ -83,9 +83,10 @@ def test_baseline_reuses_environment_same_bar_execution_and_friction():
     )
     env.reset()
     env.step(1)
+    env.step(0)
     expected = env.get_trade_log()
     pd.testing.assert_frame_equal(baseline, expected)
-    assert baseline.iloc[0].reason == "sl"  # same-bar SL wins over TP in both paths
+    assert baseline.iloc[0].reason == "sl"  # next-bar SL wins over TP in both paths
 
 
 def test_mtm_charges_entry_fee_on_entry_bar_and_matches_environment_exit_equity():

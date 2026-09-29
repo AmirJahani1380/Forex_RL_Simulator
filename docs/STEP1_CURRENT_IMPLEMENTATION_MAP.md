@@ -1,5 +1,10 @@
 # Step 1: current implementation map and characterization scope
 
+This is a historical Step 1 snapshot. The current package no longer shares
+walk-forward endpoint rows, tests a close-priced entry against its own candle,
+or limits random/EMA baselines to one entry. See the README and executed
+notebook for the current behavior and bounded evidence.
+
 ## Source of truth and scope
 
 `Forex_RL_Agent_Final.ipynb` is the current executable research pipeline. It is
