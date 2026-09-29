@@ -2,7 +2,7 @@
 
 **A small, inspectable demo of a larger FX reinforcement-learning research project.** The repository contains reusable trading and evaluation code plus one deliberately bounded, executed example. It is a research demonstration, not a trained production strategy or evidence of profitability.
 
-**What ran:** two advancing walk-forward folds on real EUR/USD daily bars, with a separate 96-step DQN in each fold. **What did not run:** the full historical study or a comparison among RL model families.
+**Models in the code:** DQN, QR-DQN, and RecurrentPPO. The published demo trains DQN only: two advancing walk-forward folds on real EUR/USD daily bars, with a separate 96-step DQN in each fold. QR-DQN and RecurrentPPO were not trained or compared in these results, and the full historical study was not run.
 
 ![Held-out equity change and drawdown for two separate EUR/USD test folds](docs/figures/heldout-equity-drawdown.png)
 
