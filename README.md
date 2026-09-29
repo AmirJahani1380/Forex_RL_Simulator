@@ -1,157 +1,74 @@
 # Forex RL Simulator
 
-> A reproducible research scaffold for testing whether an RL policy can add
-> value over simple FX trading baselines under the same risk, execution, and
-> chronological-evaluation assumptions. Research and education only—not
-> investment advice.
+**A small, inspectable demo of a larger FX reinforcement-learning research project.** The repository contains reusable trading and evaluation code plus one deliberately bounded, executed example. It is a research demonstration, not a trained production strategy or evidence of profitability.
 
-## What this project asks
+**What ran:** two advancing walk-forward folds on real EUR/USD daily bars, with a separate 96-step DQN in each fold. **What did not run:** the full historical study or a comparison among RL model families.
 
-The project studies EUR/USD directional trading with a discrete-action agent:
-flat, long, or short. Trades use ATR-derived stops and targets, R-multiple
-rewards, fixed fractional risk sizing, and a bounded holding period. The
-purpose is not to claim a live or profitable strategy; it is to make the
-research path inspectable and repeatable.
+![Held-out equity change and drawdown for two separate EUR/USD test folds](docs/figures/heldout-equity-drawdown.png)
 
-The notebook includes one executed, bounded **real EUR/USD** DQN experiment.
-It checks the pipeline on market data without establishing strategy performance.
-Full historical training and walk-forward evaluation have not been run.
+*Held-out, marked-to-market equity change and drawdown. Each fold starts from its own initial equity; the lines must not be joined into one portfolio history. Flat and seeded-random made no trades in these short test slices.*
 
-## Architecture
+## The demo in numbers
 
-Reusable code lives in `src/forex_rl/`; the notebook is an experiment surface,
-not the source of business logic.
+Yahoo Finance returned 151 EURUSD=X daily OHLCV bars for **2023-01-01 through 2023-08-01** (end exclusive); 132 remained after indicator warmup. The data was fetched on **2026-09-29 at 14:25 UTC** with yfinance 1.7.0. Each fold fitted its scaler on its own training period, trained a new CPU DQN, then evaluated validation and held-out test periods. The saved notebook run took **4.37 seconds** on the development laptop.
 
-- `data.py`, `features.py` — data retrieval and indicator construction.
-- `preprocessing.py` — train-fitted z-score scaling.
-- `environment.py` — Gym-compatible execution, R rewards, position accounting,
-  and SL → TP → time-exit priority.
-- `research.py` — deterministic policy backtest, flat/random/trend baselines,
-  and opt-in walk-forward orchestration.
-- `evaluation.py` and `reporting.py` — shared equity curves, drawdowns, risk
-  metrics, turnover/trade counts, and CSV/JSON/HTML artifacts.
-- `walk_forward.py` — chronological fold boundaries.
+| Fold | Train / validation / test rows | Strategy | Test trades | Test total R | Test Sharpe | Test Sortino | Test max drawdown |
+| --- | ---: | --- | ---: | ---: | ---: | ---: | ---: |
+| 1 | 64 / 22 / 21 | DQN | 5 | 1.074 | 2.745 | 5.769 | −0.49% |
+| 1 | 64 / 22 / 21 | EMA trend | 5 | 1.182 | 3.032 | 6.016 | −0.56% |
+| 2 | 86 / 21 / 22 | DQN | 5 | 2.163 | 7.464 | 26.066 | −0.41% |
+| 2 | 86 / 21 / 22 | EMA trend | 5 | −1.926 | −6.440 | −6.900 | −1.95% |
 
-The optional model layer supports DQN, QR-DQN, and recurrent PPO when the
-research dependencies are installed.
+DQN validation total R was **−0.536** in fold 1 and **0.506** in fold 2. The report's **1.618 mean DQN test total R** is an average of two fold statistics, not a continuous portfolio return. Flat and default seeded-random each made zero test trades, so this run offers no informative empirical random-baseline comparison.
 
-## Quant methodology and controls
+Total R sums net realized trade R-multiples. Sharpe and Sortino annualize daily marked-to-market returns at 252 periods per year; maximum drawdown uses marked-to-market equity. With only 21–22 test bars per fold, these ratios are highly unstable and should not be used as a performance claim.
 
-Features are formed from OHLCV history; the current feature row does not use a
-future bar. For every walk-forward fold, preprocessing is fitted on the train
-slice only and then applied to validation and test slices. The established
-DateOffset windows use exclusive end dates, so adjacent partitions share no
-endpoint rows. Fold summaries retain the boundaries for review.
+## How the walk-forward check works
 
-RL policies and the bundled flat, seeded-random, and EMA-trend baselines
-receive the same ATR stop/target, position-risk fraction, maximum holding
-period, `transaction_cost`, and `slippage` configuration. `transaction_cost`
-is a proportional **per-side executed-notional** fee; `slippage` is the legacy
-absolute adverse adjustment at entry. Both default to zero. Costs are included
-in net PnL, realized R, and entry-bar MTM equity. A new trade opens at the
-current close; its first SL/TP/time check occurs on the next bar, including
-the final candle before end-of-data liquidation. Already open trades retain
-SL → TP → time-exit priority. Random entries recur after
-closes; EMA signals use the prior completed bar and can re-enter. Make cost
-calibration an explicit experiment input. Environment slices require at least
-one candle after the first possible entry.
+![Observed EUR/USD train, validation, and held-out test partitions](docs/figures/walkforward-folds.png)
 
-Reports calculate annualized daily-MTM Sharpe and Sortino (252 periods/year,
-zero risk-free rate unless supplied), maximum fractional drawdown from running
-equity peaks, entry-plus-exit notional turnover, and closed-trade count. These
-figures are descriptive evaluation outputs, not model-selection guarantees.
+*Observed partitions have exclusive end dates. Within each fold, train, validation, and test rows do not overlap. Fold 2 advances the windows and retrains from scratch.*
 
-## Installation and lightweight verification
+The example uses seed 7, a 4-bar observation window, 1% position risk, a 3-bar maximum hold, a 0.0001 per-side proportional transaction cost, and a 0.00005 absolute adverse entry-price slippage. ATR-derived stops and targets apply to DQN and the flat, random, and EMA-trend baselines under the same execution engine. A decision made at a candle close cannot use that candle's earlier high or low for an exit; subsequent candles apply stop → target → time → end-of-data priority. When both stop and target lie within one bar, the stop takes priority.
 
-The core package needs only NumPy and pandas. The dev extra includes the test
-and lint tools; the research extra adds Gymnasium, market-data, and SB3 stacks.
+The notebook calls the package's walk-forward orchestration for two folds and generates per-fold and aggregate reports. It also records a small training diagnostic:
 
-```bash
-python -m venv .venv
-# Windows: .venv\Scripts\activate
-# Linux/macOS: source .venv/bin/activate
-python -m pip install --upgrade pip
-python -m pip install -e ".[dev]"
-python -m compileall -q src tests
-python -c "import forex_rl; import forex_rl_simulator"
-python -m ruff check src tests
-python -m ruff format --check src tests
-python -m pytest
-```
+![DQN temporal-difference loss across gradient updates for both folds](docs/figures/dqn-training-loss.png)
 
-The tests use tiny deterministic in-memory OHLCV fixtures. They cover feature
-alignment, train-only scaling, execution ordering, friction, baseline/policy
-evaluation consistency, equity/drawdown reporting, and walk-forward boundary
-construction. They do not download prices or execute full historical training.
+*Each DQN completed 96 environment timesteps and 88 gradient updates. The noisy temporal-difference loss trace shows that optimization ran; it does not demonstrate convergence or out-of-sample skill.*
 
-## Executed bounded pipeline example
+## Models: what was and was not compared
 
-`Forex_RL_Agent_Final.ipynb` contains saved outputs from two advancing folds on real
-`EURUSD=X` daily OHLCV fetched from Yahoo Finance with `yfinance 1.7.0` on
-2026-09-29 14:25 UTC. The requested range was 2023-01-01 through 2023-08-01
-(end exclusive); 151 bars were returned for 2023-01-02 through 2023-07-31.
-After indicator warmup, 132 rows remained. The half-open train/validation/test
-partitions had 64/22/21 rows in fold 1 and 86/21/22 in fold 2. Fold 2 advanced
-the validation and test periods one month. The notebook called
-`run_walkforward()` for both folds, refitted each scaler on that fold's train
-slice, retrained a CPU DQN for 96 steps and 88 gradient updates per fold
-(learning started after 8), evaluated both validation and held-out slices, and ran
-flat, random, and EMA-trend baselines through the same execution engine. It
-used seed 7, a 4-bar observation window, 1% position risk, 3-bar maximum hold,
-0.0001 per-side transaction cost, and 0.00005 absolute entry slippage. The
-bounded run took 4.37 seconds in the local Python 3.13 environment. It also
-generated the project's per-fold CSV, aggregate JSON, and HTML report in a
-temporary directory. The notebook saves three visible PNG figures: observed
-fold partitions, DQN training loss by update, and separate held-out equity
-and drawdown curves for DQN and matched baselines.
-After installing `.[research]`, rerun and save those outputs with
-`python scripts/run_bounded_notebook.py` or use the notebook's Run All command.
+The package supports **DQN, QR-DQN, and RecurrentPPO**. This public demo trained **DQN only**, once per fold. It compared DQN's held-out trades with flat, seeded-random, and prior-bar EMA-trend rules. **QR-DQN and RecurrentPPO were not trained or compared** in this run. A controlled RL-model comparison would require comparable training budgets, selection rules, and more out-of-sample data.
 
-| Fold | Strategy | Trades | Total R | Sharpe | Sortino | Max drawdown |
-| --- | --- | ---: | ---: | ---: | ---: | ---: |
-| 1 | DQN | 5 | 1.074 | 2.745 | 5.769 | -0.49% |
-| 1 | EMA trend | 5 | 1.182 | 3.032 | 6.016 | -0.56% |
-| 2 | DQN | 5 | 2.163 | 7.464 | 26.066 | -0.41% |
-| 2 | EMA trend | 5 | -1.926 | -6.440 | -6.900 | -1.95% |
+## Run the bounded example
 
-Flat and seeded random each made zero trades in both test slices, with zero
-total R and undefined Sharpe/Sortino. Validation total R was -0.536 across two
-trades in fold 1 and 0.506 across four trades in fold 2. The report's mean
-DQN total R across folds was 1.618; it is a mean of per-fold statistics, not a
-continuous portfolio return. These sample metrics are descriptive and unstable.
-Two tiny folds cannot establish generalization,
-statistical significance, model-selection quality, or robustness. Yahoo data
-may be revised and no raw-data snapshot is committed; cost calibration and
-multi-period research remain future work.
-Only the configured DQN path was exercised and compared with flat, seeded
-random, and EMA-trend rules. The project also supports QR-DQN and
-RecurrentPPO, but neither was trained or compared here. This is not an
-RL-model-to-RL-model comparison.
+From the repository root, in an activated Python 3.10+ environment with internet access for Yahoo Finance:
 
-## Running an experiment independently
+~~~bash
+python -m pip install -e ".[dev,research]"
+python scripts/run_bounded_notebook.py
+python -m pytest -q
+~~~
 
-Install research dependencies with `python -m pip install -e ".[research]"`,
-open `Forex_RL_Agent_Final.ipynb`, and run its bounded cells to reproduce the
-real-data example. Set an explicit `ExperimentConfig` for new experiments.
-Record `config.to_dict()` next to artifacts and call `seed_everything()` before
-optional model construction. Build folds, train only on each train slice,
-select only using its validation slice, and report the held-out test slice
-alongside the corresponding baselines. Full historical walk-forward research
-is a separate opt-in operation and may require substantial model training.
+The runner executes the notebook's bounded cells and saves their text and PNG outputs in [Forex_RL_Agent_Final.ipynb](Forex_RL_Agent_Final.ipynb). The figures above are small documentation copies of those saved outputs. Yahoo may revise its historical bars; the raw download is not committed, so a rerun may produce different numbers. Installing Matplotlib in a fresh environment was not independently verified in the local figure-editing session; it is declared in the research extra.
 
-`generate_trade_report()` writes metrics, trade, and equity/drawdown CSVs plus
-an HTML summary. `generate_walkforward_report()` writes per-fold CSV/HTML and
-aggregate JSON. Store artifacts outside version control.
+For a quick code check without downloading data or training, install the dev extra and run pytest. The tests use tiny in-memory fixtures for causal execution, long/short accounting, costs, feature alignment, fold boundaries, train-only scaling, baseline re-entry, and metrics.
 
-## Limitations and next research steps
+## Repository map
 
-This is a single-instrument, bar-based simulator. Intrabar fill assumptions,
-spread/cost calibration, liquidity, data quality, market regimes, and model
-instability require sensitivity analysis before any conclusion. The baseline
-generators are deliberately simple comparators, not production strategies.
-Walk-forward results can still be over-interpreted if researchers tune heavily
-against repeated validation/test feedback. No live execution, portfolio
-allocation, or financial recommendation is implemented.
+| Path | Role |
+| --- | --- |
+| [src/forex_rl/data.py](src/forex_rl/data.py), [features.py](src/forex_rl/features.py), [preprocessing.py](src/forex_rl/preprocessing.py) | Fetch and prepare OHLCV data; fit transforms on training rows. |
+| [environment.py](src/forex_rl/environment.py), [research.py](src/forex_rl/research.py) | Execute positions and share backtesting assumptions across agent and baselines. |
+| [walk_forward.py](src/forex_rl/walk_forward.py), [evaluation.py](src/forex_rl/evaluation.py), [reporting.py](src/forex_rl/reporting.py) | Build chronological folds, calculate metrics, and emit reports. |
+| [models.py](src/forex_rl/models.py), [config.py](src/forex_rl/config.py) | Optional model construction and explicit experiment settings. |
+| [tests/](tests/) | Fast deterministic checks. |
 
-See `docs/STEP1_CURRENT_IMPLEMENTATION_MAP.md` for preserved historical
-caveats and `docs/STEP2_REFACTOR.md` for the package-refactor map.
+The notebook is a thin demonstration of these modules. Reports from larger experiments should be kept outside version control.
+
+## Limits of the evidence
+
+This is one instrument, two short daily-data folds, and one tiny DQN configuration. The test windows are too small for statistical significance, generalization, or a defensible claim of alpha. The cost and OHLC execution assumptions need calibration against real spreads, slippage, and lower-frequency fill data. Repeated tuning against these same test windows would contaminate future research conclusions. Full historical walk-forward training, model selection, sensitivity analysis, and comparisons among RL model families belong to the larger project; they have **not** been verified here.
+
+Research and education only; not investment advice.
