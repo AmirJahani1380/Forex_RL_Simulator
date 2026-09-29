@@ -88,17 +88,18 @@ construction. They do not download prices or execute full historical training.
 
 `Forex_RL_Agent_Final.ipynb` contains saved outputs from one fold on real
 `EURUSD=X` daily OHLCV fetched from Yahoo Finance with `yfinance 1.7.0` on
-2026-09-29 13:38 UTC. The requested range was 2023-01-01 through 2023-08-01
+2026-09-29 13:50 UTC. The requested range was 2023-01-01 through 2023-08-01
 (end exclusive); 151 bars were returned for 2023-01-02 through 2023-07-31.
 After indicator warmup, 132 rows remained. The half-open
 train/validation/test partitions had 64/22/21 rows; their first-fold start
 dates were 2023-01-27, 2023-04-27, and 2023-05-27 respectively.
-The notebook fitted its scaler on train, trained a CPU DQN for 96 steps
+The notebook called `run_walkforward()` for one bounded fold, fitted its
+scaler on train, trained a CPU DQN for 96 steps and 88 gradient updates
 (learning started after 8), evaluated validation and held-out test, and ran
 flat, random, and EMA-trend baselines through the same execution engine. It
 used seed 7, a 4-bar observation window, 1% position risk, 3-bar maximum hold,
 0.0001 per-side transaction cost, and 0.00005 absolute entry slippage. The
-bounded run took 4.03 seconds in the local Python 3.13 environment.
+bounded run took 3.54 seconds in the local Python 3.13 environment.
 After installing `.[research]`, rerun and save those outputs with
 `python scripts/run_bounded_notebook.py` or use the notebook's Run All command.
 
@@ -114,6 +115,8 @@ descriptive and unstable. One tiny fold cannot establish generalization,
 statistical significance, model-selection quality, or robustness. Yahoo data
 may be revised and no raw-data snapshot is committed; cost calibration and
 multi-period research remain future work.
+Only the configured DQN path was exercised; QR-DQN and RecurrentPPO remain
+untested in this bounded run.
 
 ## Running an experiment independently
 
