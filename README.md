@@ -86,32 +86,38 @@ construction. They do not download prices or execute full historical training.
 
 ## Executed bounded pipeline example
 
-`Forex_RL_Agent_Final.ipynb` contains saved outputs from one fold on real
+`Forex_RL_Agent_Final.ipynb` contains saved outputs from two advancing folds on real
 `EURUSD=X` daily OHLCV fetched from Yahoo Finance with `yfinance 1.7.0` on
-2026-09-29 13:50 UTC. The requested range was 2023-01-01 through 2023-08-01
+2026-09-29 14:00 UTC. The requested range was 2023-01-01 through 2023-08-01
 (end exclusive); 151 bars were returned for 2023-01-02 through 2023-07-31.
-After indicator warmup, 132 rows remained. The half-open
-train/validation/test partitions had 64/22/21 rows; their first-fold start
-dates were 2023-01-27, 2023-04-27, and 2023-05-27 respectively.
-The notebook called `run_walkforward()` for one bounded fold, fitted its
-scaler on train, trained a CPU DQN for 96 steps and 88 gradient updates
-(learning started after 8), evaluated validation and held-out test, and ran
+After indicator warmup, 132 rows remained. The half-open train/validation/test
+partitions had 64/22/21 rows in fold 1 and 86/21/22 in fold 2. Fold 2 advanced
+the validation and test periods one month. The notebook called
+`run_walkforward()` for both folds, refitted each scaler on that fold's train
+slice, retrained a CPU DQN for 96 steps and 88 gradient updates per fold
+(learning started after 8), evaluated both validation and held-out slices, and ran
 flat, random, and EMA-trend baselines through the same execution engine. It
 used seed 7, a 4-bar observation window, 1% position risk, 3-bar maximum hold,
 0.0001 per-side transaction cost, and 0.00005 absolute entry slippage. The
-bounded run took 3.54 seconds in the local Python 3.13 environment.
+bounded run took 4.23 seconds in the local Python 3.13 environment. It also
+generated the project's per-fold CSV, aggregate JSON, and HTML report in a
+temporary directory; the notebook saves the aggregate figures.
 After installing `.[research]`, rerun and save those outputs with
 `python scripts/run_bounded_notebook.py` or use the notebook's Run All command.
 
-| Held-out real-data test | Trades | Total R | Sharpe | Sortino | Max drawdown |
-| --- | ---: | ---: | ---: | ---: | ---: |
-| DQN | 5 | 1.074 | 2.745 | 5.769 | -0.49% |
-| Flat | 0 | 0 | undefined | undefined | 0% |
-| Seeded random | 0 | 0 | undefined | undefined | 0% |
-| EMA trend | 5 | 1.182 | 3.032 | 6.016 | -0.56% |
+| Fold | Strategy | Trades | Total R | Sharpe | Sortino | Max drawdown |
+| --- | --- | ---: | ---: | ---: | ---: | ---: |
+| 1 | DQN | 5 | 1.074 | 2.745 | 5.769 | -0.49% |
+| 1 | EMA trend | 5 | 1.182 | 3.032 | 6.016 | -0.56% |
+| 2 | DQN | 5 | 2.163 | 7.464 | 26.066 | -0.41% |
+| 2 | EMA trend | 5 | -1.926 | -6.440 | -6.900 | -1.95% |
 
-Validation total R was -0.536 across two trades. These sample metrics are
-descriptive and unstable. One tiny fold cannot establish generalization,
+Flat and seeded random each made zero trades in both test slices, with zero
+total R and undefined Sharpe/Sortino. Validation total R was -0.536 across two
+trades in fold 1 and 0.506 across four trades in fold 2. The report's mean
+DQN total R across folds was 1.618; it is a mean of per-fold statistics, not a
+continuous portfolio return. These sample metrics are descriptive and unstable.
+Two tiny folds cannot establish generalization,
 statistical significance, model-selection quality, or robustness. Yahoo data
 may be revised and no raw-data snapshot is committed; cost calibration and
 multi-period research remain future work.
