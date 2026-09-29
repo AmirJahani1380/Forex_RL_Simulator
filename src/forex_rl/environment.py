@@ -35,6 +35,8 @@ class ForexEnv(_EnvBase):
         seed=42,
     ):
         assert len(market_df) == len(feat_df), "Market and feature frames must align."
+        if len(market_df) < int(window_size) + 2:
+            raise ValueError("At least one bar after the first possible entry is required.")
         self.mkt, self.feat = market_df.reset_index(drop=True).copy(), feat_df.reset_index(drop=True).copy()
         self.window_size, self.position_frac = int(window_size), float(position_frac)
         self.sl_atr_mult, self.tp_atr_mult = float(sl_atr_mult), float(tp_atr_mult)

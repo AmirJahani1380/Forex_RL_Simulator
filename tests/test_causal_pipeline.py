@@ -1,5 +1,6 @@
 import numpy as np
 import pandas as pd
+import pytest
 
 from forex_rl import ExperimentConfig
 from forex_rl.environment import ForexEnv
@@ -92,6 +93,17 @@ def test_final_candle_checks_stops_before_targets_then_time_or_eod():
         assert env.trades[0]["reason"] == expected
         assert env.trades[0]["exit_t"] == 2
         assert env.trades[0]["bars_in_trade"] == 1
+
+
+def test_shortest_slice_requires_a_bar_after_first_possible_entry():
+    frame = pd.DataFrame(
+        {"open": [10.0] * 3, "high": [10.0, 12.0, 12.0], "low": [10.0, 8.0, 8.0], "close": [10.0] * 3, "atr": [1.0] * 3}
+    )
+    with pytest.raises(ValueError, match="At least one bar"):
+        ForexEnv(frame.iloc[:2], pd.DataFrame({"f": [0.0] * 2}), window_size=1)
+    env = ForexEnv(frame, pd.DataFrame({"f": [0.0] * 3}), window_size=1, sl_atr_mult=1, tp_atr_mult=1)
+    _, _, done, _, _ = env.step(1)
+    assert done and env.trades[0]["exit_t"] == 2 and env.trades[0]["reason"] == "sl"
 
 
 def test_half_open_folds_and_train_only_scaler_exclude_endpoint_rows():
