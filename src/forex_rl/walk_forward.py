@@ -1,6 +1,12 @@
-"""Chronological walk-forward boundary construction."""
+"""Chronological walk-forward construction with exclusive end boundaries."""
 
 import pandas as pd
+
+
+def slice_fold(df: pd.DataFrame, fold: dict, partition: str) -> pd.DataFrame:
+    """Select a chronological partition with an exclusive end boundary."""
+    start, end = fold[f"{partition}_start"], fold[f"{partition}_end"]
+    return df.loc[(df.index >= start) & (df.index < end)].copy()
 
 
 def build_walkforward_folds(

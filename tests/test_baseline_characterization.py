@@ -35,29 +35,34 @@ class BaselineCharacterizationTests(unittest.TestCase):
         self.assertEqual(env.action_count, 3)
 
     def test_long_short_pnl_and_sl_before_tp_priority(self):
-        # On the entry bar both thresholds are touched: cell 9 selects the stop first.
-        both = market([(10, 10.1, 9.9, 10, 1), (10, 12, 8, 10, 1), (10, 10, 10, 10, 1), (10, 10, 10, 10, 1)])
+        # The next bar touches both thresholds; the stop keeps priority.
+        both = market([(10, 10.1, 9.9, 10, 1), (10, 12, 8, 10, 1), (10, 12, 8, 10, 1), (10, 10, 10, 10, 1)])
         long_env = ForexEnv(
             both, features(4), window_size=1, position_frac=0.01, sl_atr_mult=1, tp_atr_mult=1, max_bars_in_trade=4
         )
         long_env.step(1)
+        self.assertEqual(len(long_env.trades), 0)
+        long_env.step(0)
         self.assertEqual(long_env.trades[0]["reason"], "sl")
         self.assertAlmostEqual(long_env.trades[0]["realized_R"], -1.0)
         short_env = ForexEnv(
             both, features(4), window_size=1, position_frac=0.01, sl_atr_mult=1, tp_atr_mult=1, max_bars_in_trade=4
         )
         short_env.step(2)
+        short_env.step(0)
         self.assertEqual(short_env.trades[0]["reason"], "sl")
         self.assertAlmostEqual(short_env.trades[0]["pnl_value"], -0.01)
 
     def test_tp_time_and_end_of_data_exits(self):
-        tp = market([(10, 10, 10, 10, 1), (10, 12, 10.1, 10.5, 1), (10, 10, 10, 10, 1), (10, 10, 10, 10, 1)])
+        tp = market([(10, 10, 10, 10, 1), (10, 12, 10.1, 10.5, 1), (10, 12, 10, 10.5, 1), (10, 10, 10, 10, 1)])
         env = ForexEnv(tp, features(4), window_size=1, sl_atr_mult=1, tp_atr_mult=1, max_bars_in_trade=4)
         env.step(1)
+        env.step(0)
         self.assertEqual(env.trades[0]["reason"], "tp")
         timed = market([(10, 10, 10, 10, 1), (10, 10.2, 9.8, 10.4, 1), (10, 10, 10, 10.8, 1), (10, 10, 10, 11, 1)])
         env = ForexEnv(timed, features(4), window_size=1, sl_atr_mult=2, tp_atr_mult=2, max_bars_in_trade=1)
         env.step(1)
+        env.step(0)
         self.assertEqual(env.trades[0]["reason"], "time")
         eod = ForexEnv(timed, features(4), window_size=1, sl_atr_mult=99, tp_atr_mult=99, max_bars_in_trade=99)
         eod.step(1)
@@ -77,23 +82,27 @@ class BaselineCharacterizationTests(unittest.TestCase):
             transaction_cost=0.7,
         )
         slipped.step(1)
+        slipped.step(0)
         self.assertAlmostEqual(slipped.trades[0]["entry_price"], 10.25)
         self.assertLess(slipped.trades[0]["pnl_value"], 0)
         base = ForexEnv(
             rows, features(4), window_size=1, sl_atr_mult=99, tp_atr_mult=99, max_bars_in_trade=1, transaction_cost=0
         )
         base.step(1)
+        base.step(0)
         self.assertNotEqual(slipped.trades[0]["pnl_value"], base.trades[0]["pnl_value"])
         costly = ForexEnv(
             rows, features(4), window_size=1, sl_atr_mult=99, tp_atr_mult=99, max_bars_in_trade=1, transaction_cost=0.7
         )
         costly.step(1)
+        costly.step(0)
         self.assertLess(costly.trades[0]["pnl_value"], base.trades[0]["pnl_value"])
         self.assertGreater(costly.trades[0]["transaction_cost"], 0)
         short = ForexEnv(
             rows, features(4), window_size=1, sl_atr_mult=99, tp_atr_mult=99, max_bars_in_trade=1, slippage=0.25
         )
         short.step(2)
+        short.step(0)
         self.assertLess(short.trades[0]["pnl_value"], 0)
 
     def test_train_only_scaler_orchestration_and_exact_walkforward_boundaries(self):
@@ -160,6 +169,7 @@ class BaselineCharacterizationTests(unittest.TestCase):
         dated.index = pd.date_range("2020-01-01", periods=len(dated))
         env = ForexEnv(dated, features(len(dated)), window_size=1, sl_atr_mult=99, tp_atr_mult=99, max_bars_in_trade=2)
         env.step(1)
+        env.step(0)
         env.step(0)
         trades = env.get_trade_log()
         self.assertEqual(trades.iloc[0]["entry_t"], 1)

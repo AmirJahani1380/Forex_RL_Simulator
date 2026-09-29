@@ -90,14 +90,14 @@ def test_disabled_eval_callback_never_modulos_or_evaluates(monkeypatch, tmp_path
     assert callback._on_step() is True and evaluated == []
 
 
-def test_characterized_baseline_generators_emit_at_most_one_entry():
+def test_baseline_generators_emit_repeated_entry_candidates():
     df = frame(12)
     random_signal = baseline_random(df, p_enter=1.0, seed=123)
-    assert random_signal.tolist() == [1] + [0] * 11
+    assert (random_signal.iloc[:-1] != 0).all() and random_signal.iloc[-1] == 0
     trend_df = frame(8)
     trend_df["close"] = [10, 9, 8, 9, 10, 11, 12, 13]
     trend_signal = baseline_trend(trend_df, fast=2, slow=3)
-    assert trend_signal.tolist() == [0, 0, 0, 0, 1, 0, 0, 0]
+    assert trend_signal.tolist() == [0, 0, 2, 2, 2, 1, 1, 0]
 
 
 def test_train_fold_uses_wf_envs_reloads_best_and_closes(monkeypatch, tmp_path):
@@ -176,7 +176,7 @@ def test_walkforward_restores_full_schema_and_routes_algo_and_wf_parallelism(mon
     cfg, observed = ExperimentConfig(algo="DQN", wf_n_envs=9), {}
 
     def trainer(algo, train, val, config, features, prices, n_envs):
-        observed.update(train_algo=algo, n_envs=n_envs)
+        observed.update(train_algo=algo, n_envs=n_envs, train_index=train.index, val_index=val.index)
         return object(), object(), "unused"
 
     trades = pd.DataFrame({"reason": ["tp"]})
@@ -193,7 +193,7 @@ def test_walkforward_restores_full_schema_and_routes_algo_and_wf_parallelism(mon
         research,
         "backtest_model",
         lambda *args, **kwargs: (
-            observed.update(backtest_algo=kwargs["algo"])
+            observed.update(backtest_algo=kwargs["algo"], test_index=args[2].index)
             or {
                 "trades": trades,
                 "r": agent,
@@ -242,4 +242,8 @@ def test_walkforward_restores_full_schema_and_routes_algo_and_wf_parallelism(mon
         "trend_sharpe",
     }
     assert set(result.columns) == expected and np.isclose(result.iloc[0].return_pct, 0.2)
-    assert observed == {"train_algo": "QRDQN", "n_envs": 9, "backtest_algo": "QRDQN"}
+    assert observed["train_algo"] == observed["backtest_algo"] == "QRDQN"
+    assert observed["n_envs"] == 9
+    assert observed["train_index"].equals(df.index[:1])
+    assert observed["val_index"].equals(df.index[1:2])
+    assert observed["test_index"].equals(df.index[2:4])
